@@ -70,6 +70,47 @@ enum WhitelistEntryType {
   CIDR
 }
 
+enum PlanStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  EXPIRED
+  GRACE_PERIOD
+  SUSPENDED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+  MANUAL
+}
+
+enum InvoiceStatus {
+  PAID
+  UNPAID
+  PARTIAL
+  VOID
+}
+
+enum PaymentProvider {
+  MANUAL
+  RAZORPAY
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 // ============================================================
 // TENANT
 // ============================================================
@@ -99,6 +140,12 @@ model Tenant {
 
   users         User[]
   apiKeys       ApiKey[]
+  plans         Plan[]           @relation("PlanCreatedByTenant")
+  subscriptions Subscription[]
+  invoices      Invoice[]
+  billingEvents BillingHistory[]
+  paymentAttempts PaymentAttempt[]
+  quotaUsage    QuotaUsage[]
   domains       TenantDomain[]
   ipWhitelist   TenantIpWhitelist[]
   usageMetrics  UsageMetric[]
@@ -107,6 +154,117 @@ model Tenant {
   apiUsageLogs  ApiUsageLog[]
 
   @@map("tenants")
+}
+
+model Plan {
+  id                    String      @id @default(uuid())
+  name                  String
+  slug                  String      @unique
+  monthlyPrice          Decimal     @db.Decimal(12, 2) @map("monthly_price")
+  annualPrice           Decimal     @db.Decimal(12, 2) @map("annual_price")
+  currency              String      @default("USD")
+  requestLimitMonthly   Int?        @map("request_limit_monthly")
+  requestsPerMinute     Int         @default(100) @map("requests_per_minute")
+  analyticsRetentionDays Int?       @map("analytics_retention_days")
+  features              Json
+  status                PlanStatus  @default(ACTIVE)
+  createdByTenantId     String?     @map("created_by_tenant_id")
+  createdByTenant       Tenant?     @relation("PlanCreatedByTenant", fields: [createdByTenantId], references: [id], onDelete: SetNull)
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@index([status])
+  @@map("plans")
+}
+
+model Subscription {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId            String             @map("plan_id")
+  plan              Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status            SubscriptionStatus @default(ACTIVE)
+  billingCycle      BillingCycle       @default(MONTHLY) @map("billing_cycle")
+  startsAt          DateTime           @map("starts_at")
+  expiresAt         DateTime?          @map("expires_at")
+  gracePeriodEndsAt DateTime?          @map("grace_period_ends_at")
+  manualOverride    Boolean            @default(false) @map("manual_override")
+  autoRenew         Boolean            @default(true) @map("auto_renew")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([expiresAt])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  tenantId      String        @map("tenant_id")
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceNumber String        @unique @map("invoice_number")
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @default("USD")
+  status        InvoiceStatus @default(UNPAID)
+  issuedAt      DateTime      @map("issued_at")
+  paidAt        DateTime?     @map("paid_at")
+  notes         String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model BillingHistory {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  eventType String   @map("event_type")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([eventType])
+  @@map("billing_history")
+}
+
+model PaymentAttempt {
+  id                String               @id @default(uuid())
+  tenantId          String               @map("tenant_id")
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider          PaymentProvider
+  status            PaymentAttemptStatus @default(PENDING)
+  amount            Decimal              @db.Decimal(12, 2)
+  currency          String               @default("USD")
+  providerReference String?              @map("provider_reference")
+  failureReason     String?              @map("failure_reason")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([provider])
+  @@index([status])
+  @@map("payment_attempts")
+}
+
+model QuotaUsage {
+  id                  String   @id @default(uuid())
+  tenantId            String   @map("tenant_id")
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  month               String
+  requestsUsed        Int      @default(0) @map("requests_used")
+  trustRequests       Int      @default(0) @map("trust_requests")
+  intelligenceRequests Int     @default(0) @map("intelligence_requests")
+  blockedRequests     Int      @default(0) @map("blocked_requests")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, month])
+  @@index([tenantId])
+  @@map("quota_usage")
 }
 
 // ============================================================

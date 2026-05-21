@@ -6,6 +6,7 @@ import { RedisModule } from '../../redis/redis.module';
 import { RedisService } from '../../redis/redis.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { BillingModule } from '../billing/billing.module';
 import { BasicController } from './controllers/basic.controller';
 import { IntelligenceController } from './controllers/intelligence.controller';
 import { TrustController } from './controllers/trust.controller';
@@ -22,6 +23,7 @@ import { ScopeGuard } from './guards/scope.guard';
     RedisModule,
     PrismaModule,
     TenantModule,
+    BillingModule,
     GeoEngineModule,
     TrustEngineModule,
   ],

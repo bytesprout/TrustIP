@@ -9,10 +9,11 @@ import {
 import type { Request, Response } from 'express';
 import { TenantValidationService } from '../services/tenant-validation.service';
 import type { AuthenticatedRequest } from '../interfaces/ip.interfaces';
-import { QuotaService } from '../../tenant/services/quota.service';
 import { ConfigService } from '../../../config/config.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { API_SCOPES } from '../constants/ip.constants';
+import { SubscriptionService } from '../../billing/services/subscription.service';
+import { QuotaEnforcementService } from '../../billing/services/quota-enforcement.service';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -20,7 +21,8 @@ export class ApiKeyGuard implements CanActivate {
 
   constructor(
     private readonly tenantValidation: TenantValidationService,
-    private readonly quotaService: QuotaService,
+    private readonly subscriptionService: SubscriptionService,
+    private readonly quotaEnforcement: QuotaEnforcementService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
@@ -123,7 +125,36 @@ export class ApiKeyGuard implements CanActivate {
       }
     }
 
-    const quota = await this.quotaService.checkAndConsume(result.tenant!.id);
+    const subscription = await this.subscriptionService.validateAccess(result.tenant!.id);
+    if (!subscription.allowed) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'SUBSCRIPTION_INACTIVE',
+          message: subscription.message ?? 'Subscription inactive',
+        },
+      });
+      return false;
+    }
+
+    const featureEnabled = await this.subscriptionService.validateFeatureAccess(result.tenant!.id, req.path);
+    if (!featureEnabled) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FEATURE_DISABLED',
+          message: 'Requested feature is disabled for current plan',
+        },
+      });
+      return false;
+    }
+
+    if (subscription.status === 'GRACE_PERIOD' && subscription.gracePeriodEndsAt) {
+      res.setHeader('X-Billing-Status', 'GRACE_PERIOD');
+      res.setHeader('X-Grace-Period-Ends-At', subscription.gracePeriodEndsAt.toISOString());
+    }
+
+    const quota = await this.quotaEnforcement.checkAndConsume(result.tenant!.id, req);
     if (quota.limit !== null) {
       res.setHeader('X-Quota-Limit', String(quota.limit));
       res.setHeader('X-Quota-Used', String(quota.used));

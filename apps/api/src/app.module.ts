@@ -13,6 +13,8 @@ import { SystemModule } from './modules/system/system.module';
 import { IpModule } from './modules/ip/ip.module';
 import { DatasetModule } from './modules/dataset/dataset.module';
 import { TenantModule } from './modules/tenant/tenant.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ConfigService } from './config/config.service';
@@ -51,6 +53,8 @@ import { ConfigService } from './config/config.service';
     FeatureFlagsModule,
     SystemModule,
     TenantModule,
+    BillingModule,
+    AuditLogsModule,
     IpModule,
     DatasetModule,
   ],

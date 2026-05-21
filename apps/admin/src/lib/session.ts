@@ -1,8 +1,12 @@
 import { cookies } from 'next/headers';
+import { decodeJwtClaims, type Role } from '@/lib/auth';
 
 export interface Session {
   accessToken: string;
   userId: string;
+  role: Role;
+  tenantId: string | null;
+  email: string;
 }
 
 export async function getServerSession(): Promise<Session | null> {
@@ -11,5 +15,16 @@ export async function getServerSession(): Promise<Session | null> {
 
   if (!token) return null;
 
-  return { accessToken: token, userId: '' };
+  const claims = decodeJwtClaims(token);
+  if (!claims) {
+    return null;
+  }
+
+  return {
+    accessToken: token,
+    userId: claims.sub,
+    role: claims.role,
+    tenantId: claims.tenantId,
+    email: claims.email,
+  };
 }

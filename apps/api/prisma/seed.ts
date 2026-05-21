@@ -7,6 +7,83 @@ const prisma = new PrismaClient();
 async function main(): Promise<void> {
   console.log('🌱 Seeding database...');
 
+  const defaultPlans = [
+    {
+      name: 'Free',
+      slug: 'free',
+      monthlyPrice: 0,
+      annualPrice: 0,
+      currency: 'USD',
+      requestLimitMonthly: 10000,
+      requestsPerMinute: 60,
+      analyticsRetentionDays: 30,
+      features: { basic_lookup: true, intelligence_lookup: false, trust_lookup: false },
+    },
+    {
+      name: 'Starter',
+      slug: 'starter',
+      monthlyPrice: 29.99,
+      annualPrice: 299.99,
+      currency: 'USD',
+      requestLimitMonthly: 100000,
+      requestsPerMinute: 200,
+      analyticsRetentionDays: 60,
+      features: { basic_lookup: true, intelligence_lookup: true, trust_lookup: true },
+    },
+    {
+      name: 'Business',
+      slug: 'business',
+      monthlyPrice: 149.99,
+      annualPrice: 1499.99,
+      currency: 'USD',
+      requestLimitMonthly: 1000000,
+      requestsPerMinute: 1000,
+      analyticsRetentionDays: 90,
+      features: { basic_lookup: true, intelligence_lookup: true, trust_lookup: true, admin_lookup: true },
+    },
+    {
+      name: 'Enterprise',
+      slug: 'enterprise',
+      monthlyPrice: 0,
+      annualPrice: 0,
+      currency: 'USD',
+      requestLimitMonthly: null,
+      requestsPerMinute: 5000,
+      analyticsRetentionDays: null,
+      features: { basic_lookup: true, intelligence_lookup: true, trust_lookup: true, admin_lookup: true, enterprise: true },
+    },
+  ];
+
+  for (const plan of defaultPlans) {
+    await prisma.plan.upsert({
+      where: { slug: plan.slug },
+      update: {
+        name: plan.name,
+        monthlyPrice: plan.monthlyPrice,
+        annualPrice: plan.annualPrice,
+        currency: plan.currency,
+        requestLimitMonthly: plan.requestLimitMonthly,
+        requestsPerMinute: plan.requestsPerMinute,
+        analyticsRetentionDays: plan.analyticsRetentionDays,
+        features: plan.features,
+        status: 'ACTIVE',
+      },
+      create: {
+        name: plan.name,
+        slug: plan.slug,
+        monthlyPrice: plan.monthlyPrice,
+        annualPrice: plan.annualPrice,
+        currency: plan.currency,
+        requestLimitMonthly: plan.requestLimitMonthly,
+        requestsPerMinute: plan.requestsPerMinute,
+        analyticsRetentionDays: plan.analyticsRetentionDays,
+        features: plan.features,
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`✅ Plan: ${plan.slug}`);
+  }
+
   // Create default tenant
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'trustip-platform' },
@@ -14,7 +91,7 @@ async function main(): Promise<void> {
     create: {
       name: 'TrustIP Platform',
       slug: 'trustip-platform',
-      mode: 'SAAS',
+      mode: 'saas',
       isActive: true,
     },
   });
@@ -75,6 +152,9 @@ async function main(): Promise<void> {
     { key: 'maintenance_mode', value: false },
     { key: 'max_api_keys_per_tenant', value: 10 },
     { key: 'default_rate_limit_per_minute', value: 100 },
+    { key: 'billing_mode', value: 'MANUAL' },
+    { key: 'billing_trial_days', value: 7 },
+    { key: 'billing_grace_days', value: 7 },
   ];
 
   for (const config of configs) {
@@ -104,6 +184,38 @@ async function main(): Promise<void> {
   });
 
   console.log(`✅ Sample API key prefix: ${keyPrefix}...`);
+
+  const starterPlan = await prisma.plan.findUnique({ where: { slug: 'starter' } });
+  if (starterPlan) {
+    await prisma.subscription.upsert({
+      where: { id: `seed-sub-${tenant.id}` },
+      update: {},
+      create: {
+        id: `seed-sub-${tenant.id}`,
+        tenantId: tenant.id,
+        planId: starterPlan.id,
+        status: 'ACTIVE',
+        billingCycle: 'MANUAL',
+        startsAt: new Date(),
+        expiresAt: null,
+        manualOverride: true,
+        autoRenew: false,
+      },
+    });
+
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        subscriptionPlanId: starterPlan.id,
+        monthlyRequestLimit: starterPlan.requestLimitMonthly,
+        rateLimitPerMinute: starterPlan.requestsPerMinute,
+        analyticsRetentionDays: starterPlan.analyticsRetentionDays,
+      },
+    });
+
+    console.log('✅ Seeded default manual subscription');
+  }
+
   console.log('\n📋 Seed Summary:');
   console.log(`   Admin email: admin@trustip.io`);
   console.log(`   Admin password: ${adminPassword}`);

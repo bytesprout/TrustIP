@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -39,8 +40,8 @@ export default function LoginPage(): JSX.Element {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md space-y-8 p-8">
+    <div className="min-h-screen flex items-center justify-center bg-[conic-gradient(from_180deg_at_50%_50%,hsl(var(--muted))_0deg,hsl(var(--background))_120deg,hsl(var(--secondary))_360deg)] px-4">
+      <div className="w-full max-w-md space-y-8 rounded-2xl border border-border bg-card/90 p-8 shadow-2xl backdrop-blur">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight">TrustIP</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -102,6 +103,15 @@ export default function LoginPage(): JSX.Element {
           >
             {isLoading ? 'Signing in...' : 'Sign in'}
           </button>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <Link href="/forgot-password" className="hover:text-foreground">
+              Forgot password
+            </Link>
+            <Link href="/reset-password" className="hover:text-foreground">
+              Reset token flow
+            </Link>
+          </div>
         </form>
       </div>
     </div>
