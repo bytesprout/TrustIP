@@ -14,11 +14,22 @@
     "lint:fix": "turbo run lint:fix",
     "test": "turbo run test",
     "test:cov": "turbo run test:cov",
+    "test:unit": "sh ./tests/unit/critical-services.sh && pnpm --filter @trustip/admin test",
+    "test:integration": "sh ./tests/integration/stack-health.sh",
+    "test:contract": "node ./tests/contract/ip-contract.spec.js",
+    "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
+    "test:performance": "sh ./tests/performance/run.sh",
+    "test:security": "sh ./tests/security/owasp-zap-baseline.sh",
+    "test:chaos": "sh ./tests/chaos/redis-failure.sh && sh ./tests/chaos/postgres-failure.sh",
+    "test:qa": "sh ./tests/qa-checklist.sh",
+    "test:release-gate": "sh ./tests/release-gate.sh",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.2",
     "turbo": "^2.9.14",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "yaml": "^2.9.0"
   }
 }

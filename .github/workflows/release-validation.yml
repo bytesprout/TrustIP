@@ -1,0 +1,95 @@
+name: Release Validation
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.9'
+
+jobs:
+  release-gate:
+    name: Release Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: |
+          pnpm --filter @trustip/shared-types build
+          pnpm --filter @trustip/shared-config build
+          pnpm --filter @trustip/logger build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start platform stack
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis api admin nginx
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 45); do
+            if wget -qO- http://localhost:8080/api/health | grep -q '"healthy":true'; then
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "API health check timeout"
+          exit 1
+
+      - name: Unit tests gate
+        run: pnpm test:unit
+
+      - name: Contract tests gate
+        run: pnpm test:contract
+
+      - name: Integration tests gate
+        run: pnpm test:integration
+
+      - name: E2E tests gate
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: pnpm test:e2e
+
+      - name: Security baseline gate
+        env:
+          TARGET_URL: http://localhost:8080
+        run: pnpm test:security
+
+      - name: Performance baseline gate
+        env:
+          K6_BASE_URL: http://localhost:8080
+          K6_PATH: /api/health
+          K6_EXPECT_HEALTHY: '1'
+        run: pnpm test:performance
+
+      - name: Chaos gates
+        env:
+          BASE_URL: http://localhost:8080
+        run: pnpm test:chaos
+
+      - name: QA checklist gate
+        env:
+          BASE_URL: http://localhost:8080
+          ADMIN_URL: http://localhost:3000
+        run: pnpm test:qa
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v

@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "ip": "8.8.8.8",
+  "trust": {
+    "trustScore": 80,
+    "riskScore": 20,
+    "decision": "ALLOW",
+    "confidence": "HIGH",
+    "signals": {
+      "vpn": false,
+      "proxy": false,
+      "hosting": true,
+      "tor": false,
+      "geoVelocityRisk": false,
+      "concurrentRisk": false
+    },
+    "reasons": [
+      "Hosting/datacenter IP",
+      "No abuse indicators"
+    ]
+  }
+}

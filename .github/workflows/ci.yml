@@ -185,3 +185,128 @@ jobs:
           tags: trustip/admin:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run contract tests
+        run: pnpm test:contract
+
+  unit-critical:
+    name: Unit Critical
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: trustip_test
+          POSTGRES_USER: trustip
+          POSTGRES_PASSWORD: trustip_test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://trustip:trustip_test_password@localhost:5432/trustip_test
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-that-is-at-least-64-characters-long-xxxxxxxxxxxxxxxx
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: |
+          pnpm --filter @trustip/shared-types build
+          pnpm --filter @trustip/shared-config build
+          pnpm --filter @trustip/logger build
+
+      - name: Run critical unit gates
+        run: pnpm test:unit
+
+  integration-stack:
+    name: Integration Stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: |
+          pnpm --filter @trustip/shared-types build
+          pnpm --filter @trustip/shared-config build
+          pnpm --filter @trustip/logger build
+
+      - name: Start stack
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis api
+
+      - name: Run integration health checks
+        env:
+          BASE_URL: http://localhost:8080
+        run: pnpm test:integration
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v

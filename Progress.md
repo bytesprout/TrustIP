@@ -24,7 +24,7 @@
 
 - **Completed:** 10 / 12 phases
 - **Progress:** **83.3%**
-- **Current milestone:** Phase 10 complete, next is Phase 11
+- **Current milestone:** Phase 11 testing/release gates implementation in progress
 
 ## Completion Notes
 
@@ -61,6 +61,12 @@
 - Added staging compose override and strengthened production override for environment isolation and role services.
 - Added immutable image tag support (`API_IMAGE_TAG`, `ADMIN_IMAGE_TAG`) and compose validation for dev/staging/prod.
 - Validated docker compose configs and full workspace checks: shared package builds, API typecheck/lint/jest, and Admin typecheck/lint.
+- 2026-05-21: Phase 11 implementation started and partially validated.
+- Added required testing pyramid directories and baseline assets under `tests/` (unit, integration, contract, e2e, performance, security, chaos, fixtures).
+- Added Admin test stack with Vitest + Testing Library (`apps/admin/vitest.config.ts`, `apps/admin/src/test/setup.ts`, `apps/admin/src/lib/auth.test.ts`).
+- Added root testing/release scripts and CI jobs for contract, critical unit, and integration stack validation, plus manual full release gate workflow.
+- Local validation passed for dependency install, shared package builds, API/Admin typecheck, Admin unit tests, contract tests, and API critical suites.
+- Full end-to-end Phase 11 acceptance run remains blocked locally until Docker daemon is available for compose-dependent security/performance/chaos/e2e stack execution.
 
 ## Update Rule (For Future Progress Tracking)
 
