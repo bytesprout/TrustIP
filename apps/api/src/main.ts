@@ -8,6 +8,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SecuritySanitizationMiddleware } from './common/middleware/security-sanitization.middleware';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -19,7 +20,31 @@ async function bootstrap(): Promise<void> {
   const port = configService.port;
 
   // Security: HTTP security headers
-  app.use(helmet());
+  app.use(
+    helmet({
+      frameguard: { action: 'deny' },
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      hsts: {
+        maxAge: 63072000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'none'"],
+          objectSrc: ["'none'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+        },
+      },
+    }),
+  );
+  const securitySanitizationMiddleware = new SecuritySanitizationMiddleware();
+  app.use(securitySanitizationMiddleware.use.bind(securitySanitizationMiddleware));
 
   // CORS
   app.enableCors({

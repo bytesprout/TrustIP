@@ -17,6 +17,8 @@ import { ScopeValidationService } from './services/scope-validation.service';
 import { ResponseBuilderService } from './services/response-builder.service';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { ScopeGuard } from './guards/scope.guard';
+import { ObservabilityModule } from '../observability/observability.module';
+import { SecurityModule } from '../security/security.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { ScopeGuard } from './guards/scope.guard';
     PrismaModule,
     TenantModule,
     BillingModule,
+    ObservabilityModule,
+    SecurityModule,
     GeoEngineModule,
     TrustEngineModule,
   ],

@@ -77,4 +77,20 @@ export class ConfigService {
   get isEnterpriseMode(): boolean {
     return this.appMode === 'enterprise';
   }
+
+  get securityAbuseWindowSeconds(): number {
+    return this.nestConfig.get('SECURITY_ABUSE_WINDOW_SECONDS', { infer: true });
+  }
+
+  get securityAbuseThreshold(): number {
+    return this.nestConfig.get('SECURITY_ABUSE_THRESHOLD', { infer: true });
+  }
+
+  get securityBlockSeconds(): number {
+    return this.nestConfig.get('SECURITY_BLOCK_SECONDS', { infer: true });
+  }
+
+  get otelExporterOtlpEndpoint(): string | undefined {
+    return this.nestConfig.get('OTEL_EXPORTER_OTLP_ENDPOINT', { infer: true });
+  }
 }

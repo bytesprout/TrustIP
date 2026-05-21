@@ -7,6 +7,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { RegisterDto, LoginDto } from './dto/auth.dto';
 import { Role } from '@trustip/shared-types';
+import { SecurityAbuseService } from '../security/security-abuse.service';
 
 // Prisma mock
 const mockPrismaService = {
@@ -33,6 +34,12 @@ const mockConfigService = {
   jwtRefreshExpiresIn: '30d',
 };
 
+const mockSecurityAbuseService = {
+  isBlocked: jest.fn().mockResolvedValue(false),
+  recordFailure: jest.fn().mockResolvedValue(undefined),
+  clear: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('AuthService', () => {
   let service: AuthService;
 
@@ -43,6 +50,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: SecurityAbuseService, useValue: mockSecurityAbuseService },
       ],
     }).compile();
 

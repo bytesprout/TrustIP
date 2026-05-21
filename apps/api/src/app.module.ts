@@ -15,6 +15,8 @@ import { DatasetModule } from './modules/dataset/dataset.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { ObservabilityModule } from './modules/observability/observability.module';
+import { SecurityModule } from './modules/security/security.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ConfigService } from './config/config.service';
@@ -55,6 +57,8 @@ import { ConfigService } from './config/config.service';
     TenantModule,
     BillingModule,
     AuditLogsModule,
+    ObservabilityModule,
+    SecurityModule,
     IpModule,
     DatasetModule,
   ],

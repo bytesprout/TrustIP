@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { AnalyticsService } from './analytics.service';
 import { ResponseBuilderService } from './response-builder.service';
+import { ObservabilityMetricsService } from '../../observability/observability-metrics.service';
 import type {
   AuthenticatedRequest,
   BasicIpResponse,
@@ -31,6 +32,7 @@ export class IpService {
     private readonly analytics: AnalyticsService,
     private readonly responseBuilder: ResponseBuilderService,
     private readonly trustService: TrustService,
+    private readonly metrics: ObservabilityMetricsService,
   ) {}
 
   async basic(
@@ -61,6 +63,11 @@ export class IpService {
       scope: 'basic_lookup',
       userAgent: req.headers['user-agent'] ?? undefined,
     });
+
+    this.metrics.recordCache('ip_basic', tenantId, geoResult.metadata.cacheHit);
+    if (privacy.vpn) {
+      this.metrics.recordVpnDetection(tenantId);
+    }
 
     return response;
   }
@@ -93,6 +100,11 @@ export class IpService {
       scope: 'intelligence_lookup',
       userAgent: req.headers['user-agent'] ?? undefined,
     });
+
+    this.metrics.recordCache('ip_intelligence', tenantId, geoResult.metadata.cacheHit);
+    if (privacy.vpn) {
+      this.metrics.recordVpnDetection(tenantId);
+    }
 
     return response;
   }
@@ -132,6 +144,12 @@ export class IpService {
       scope: 'trust_lookup',
       userAgent: req.headers['user-agent'] ?? undefined,
     });
+
+    this.metrics.recordCache('ip_trust', tenantId, geoResult.metadata.cacheHit);
+    if (privacy.vpn) {
+      this.metrics.recordVpnDetection(tenantId);
+    }
+    this.metrics.recordTrustScore(tenantId, response.trust.trustScore);
 
     return response;
   }

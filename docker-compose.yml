@@ -73,6 +73,10 @@ services:
       ADMIN_URL: http://localhost:3000
       GEO_ENGINE_DATASET_PATH: /data/datasets/current/geolite
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      SECURITY_ABUSE_WINDOW_SECONDS: ${SECURITY_ABUSE_WINDOW_SECONDS:-300}
+      SECURITY_ABUSE_THRESHOLD: ${SECURITY_ABUSE_THRESHOLD:-8}
+      SECURITY_BLOCK_SECONDS: ${SECURITY_BLOCK_SECONDS:-900}
     volumes:
       - ./data/datasets:/data/datasets:rw
     ports:
@@ -135,10 +139,93 @@ services:
     networks:
       - trustip-network
 
+  # ============================================================
+  # Prometheus
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: trustip-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Loki
+  # ============================================================
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: trustip-loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Grafana
+  # ============================================================
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: trustip-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # OpenTelemetry Collector
+  # ============================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    container_name: trustip-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./infrastructure/monitoring/otel/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - trustip-network
+
 volumes:
   postgres-data:
     driver: local
   redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
     driver: local
 
 networks:

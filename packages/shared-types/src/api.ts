@@ -76,6 +76,7 @@ export interface HealthResponse {
   healthy: boolean;
   database: HealthStatus;
   redis: HealthStatus;
+  services?: Record<string, HealthStatus>;
   version: string;
   uptime: number;
 }

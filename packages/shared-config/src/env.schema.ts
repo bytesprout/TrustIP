@@ -29,6 +29,12 @@ export const ApiEnvSchema = z.object({
 
   // Admin
   ADMIN_URL: z.string().url().default('http://localhost:3000'),
+
+  // Security monitoring
+  SECURITY_ABUSE_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
+  SECURITY_ABUSE_THRESHOLD: z.coerce.number().int().positive().default(8),
+  SECURITY_BLOCK_SECONDS: z.coerce.number().int().positive().default(900),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
 export type ApiEnv = z.infer<typeof ApiEnvSchema>;

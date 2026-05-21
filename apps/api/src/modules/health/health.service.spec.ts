@@ -6,6 +6,19 @@ import { HealthStatus } from '@trustip/shared-types';
 
 const mockPrismaService = {
   healthCheck: jest.fn(),
+  datasetRegistry: {
+    findMany: jest.fn(),
+  },
+  trustHistory: {
+    findFirst: jest.fn(),
+  },
+  plan: {
+    count: jest.fn(),
+  },
+  subscription: {
+    count: jest.fn(),
+  },
+  $transaction: jest.fn(),
 };
 
 const mockRedisService = {
@@ -32,6 +45,11 @@ describe('HealthService', () => {
     it('should return healthy when both DB and Redis are healthy', async () => {
       mockPrismaService.healthCheck.mockResolvedValue(true);
       mockRedisService.healthCheck.mockResolvedValue(true);
+      mockPrismaService.datasetRegistry.findMany.mockResolvedValue([
+        { datasetName: 'geolite', status: 'ACTIVE', lastUpdatedAt: new Date() },
+      ]);
+      mockPrismaService.trustHistory.findFirst.mockResolvedValue(null);
+      mockPrismaService.$transaction.mockResolvedValue([1, 1]);
 
       const result = await service.getOverallHealth();
 
@@ -43,6 +61,11 @@ describe('HealthService', () => {
     it('should return unhealthy when DB is down', async () => {
       mockPrismaService.healthCheck.mockResolvedValue(false);
       mockRedisService.healthCheck.mockResolvedValue(true);
+      mockPrismaService.datasetRegistry.findMany.mockResolvedValue([
+        { datasetName: 'geolite', status: 'ACTIVE', lastUpdatedAt: new Date() },
+      ]);
+      mockPrismaService.trustHistory.findFirst.mockResolvedValue(null);
+      mockPrismaService.$transaction.mockResolvedValue([1, 1]);
 
       const result = await service.getOverallHealth();
 
@@ -53,6 +76,11 @@ describe('HealthService', () => {
     it('should return unhealthy when Redis is down', async () => {
       mockPrismaService.healthCheck.mockResolvedValue(true);
       mockRedisService.healthCheck.mockResolvedValue(false);
+      mockPrismaService.datasetRegistry.findMany.mockResolvedValue([
+        { datasetName: 'geolite', status: 'ACTIVE', lastUpdatedAt: new Date() },
+      ]);
+      mockPrismaService.trustHistory.findFirst.mockResolvedValue(null);
+      mockPrismaService.$transaction.mockResolvedValue([1, 1]);
 
       const result = await service.getOverallHealth();
 
@@ -80,6 +108,24 @@ describe('HealthService', () => {
     it('should return healthy status', async () => {
       mockRedisService.healthCheck.mockResolvedValue(true);
       const result = await service.getRedisHealth();
+      expect(result.status).toBe(HealthStatus.HEALTHY);
+    });
+  });
+
+  describe('getDatasetsHealth', () => {
+    it('should return unhealthy when no datasets are registered', async () => {
+      mockPrismaService.datasetRegistry.findMany.mockResolvedValue([]);
+
+      const result = await service.getDatasetsHealth();
+      expect(result.status).toBe(HealthStatus.UNHEALTHY);
+    });
+  });
+
+  describe('getBillingHealth', () => {
+    it('should return healthy when billing queries succeed', async () => {
+      mockPrismaService.$transaction.mockResolvedValue([2, 3]);
+
+      const result = await service.getBillingHealth();
       expect(result.status).toBe(HealthStatus.HEALTHY);
     });
   });

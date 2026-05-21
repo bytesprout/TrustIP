@@ -12,6 +12,7 @@ import { ConfigService } from '../../config/config.service';
 import type { RegisterDto, LoginDto } from './dto/auth.dto';
 import type { AuthTokens, JwtPayload, UserProfile } from '@trustip/shared-types';
 import { Role } from '@trustip/shared-types';
+import { SecurityAbuseService } from '../security/security-abuse.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly abuseService: SecurityAbuseService,
   ) {}
 
   async register(dto: RegisterDto): Promise<UserProfile> {
@@ -68,18 +70,44 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<AuthTokens> {
+    const abuseIdentifier = `${dto.email.toLowerCase()}:${ipAddress ?? 'unknown'}`;
+    const isBlocked = await this.abuseService.isBlocked('auth', abuseIdentifier);
+    if (isBlocked) {
+      throw new UnauthorizedException('Too many failed login attempts. Please retry later.');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
 
     if (!user?.isActive) {
+      await this.abuseService.recordFailure({
+        scope: 'auth',
+        identifier: abuseIdentifier,
+        source: AuthService.name,
+        ipAddress,
+        userAgent,
+        metadata: { reason: 'USER_NOT_FOUND_OR_INACTIVE' },
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await argon2.verify(user.passwordHash, dto.password);
     if (!passwordValid) {
+      await this.abuseService.recordFailure({
+        scope: 'auth',
+        identifier: abuseIdentifier,
+        source: AuthService.name,
+        tenantId: user.tenantId,
+        userId: user.id,
+        ipAddress,
+        userAgent,
+        metadata: { reason: 'INVALID_PASSWORD' },
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    await this.abuseService.clear('auth', abuseIdentifier);
 
     await this.prisma.user.update({
       where: { id: user.id },

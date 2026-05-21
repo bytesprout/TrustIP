@@ -14,6 +14,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { API_SCOPES } from '../constants/ip.constants';
 import { SubscriptionService } from '../../billing/services/subscription.service';
 import { QuotaEnforcementService } from '../../billing/services/quota-enforcement.service';
+import { SecurityAbuseService } from '../../security/security-abuse.service';
+import { ObservabilityMetricsService } from '../../observability/observability-metrics.service';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -23,6 +25,8 @@ export class ApiKeyGuard implements CanActivate {
     private readonly tenantValidation: TenantValidationService,
     private readonly subscriptionService: SubscriptionService,
     private readonly quotaEnforcement: QuotaEnforcementService,
+    private readonly abuseService: SecurityAbuseService,
+    private readonly metrics: ObservabilityMetricsService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
@@ -33,6 +37,17 @@ export class ApiKeyGuard implements CanActivate {
     const res = http.getResponse<Response>();
 
     const rawApiKey = req.headers['x-api-key'] as string | undefined;
+    const callerIp = this.extractCallerIp(req) ?? 'unknown';
+
+    const abuseIdentifier = `${callerIp}:${req.path}`;
+    if (await this.abuseService.isBlocked('api_key', abuseIdentifier)) {
+      this.metrics.recordBlockedRequest('TEMP_BLOCK', 'system');
+      throw new ForbiddenException({
+        success: false,
+        error: { code: 'TEMP_BLOCKED', message: 'Request temporarily blocked due to abuse' },
+      });
+    }
+
     if (!rawApiKey) {
       if (this.config.isEnterpriseMode) {
         const tenant = await this.prisma.tenant.findUnique({
@@ -73,31 +88,53 @@ export class ApiKeyGuard implements CanActivate {
         return true;
       }
 
+      await this.abuseService.recordFailure({
+        scope: 'api_key',
+        identifier: abuseIdentifier,
+        source: ApiKeyGuard.name,
+        ipAddress: callerIp,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        requestId: (req as Request & { requestId?: string }).requestId,
+        metadata: { reason: 'MISSING_API_KEY' },
+      });
+
       throw new UnauthorizedException({
         success: false,
         error: { code: 'INVALID_API_KEY', message: 'Missing x-api-key header' },
       });
     }
 
-    const callerIp = this.extractCallerIp(req);
     const origin = req.headers['origin'] as string | undefined;
     const referer = req.headers['referer'] as string | undefined;
 
     const result = await this.tenantValidation.validate(rawApiKey, origin, referer, callerIp);
 
     if (!result.valid) {
+      await this.abuseService.recordFailure({
+        scope: 'api_key',
+        identifier: abuseIdentifier,
+        source: ApiKeyGuard.name,
+        ipAddress: callerIp,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        requestId: (req as Request & { requestId?: string }).requestId,
+        metadata: { reason: result.errorCode ?? 'INVALID_API_KEY' },
+      });
+
       const status = this.getStatusForError(result.errorCode ?? 'INVALID_API_KEY');
       const body = {
         success: false,
         error: { code: result.errorCode, message: result.errorMessage },
       };
       if (status === 429) {
+        this.metrics.recordBlockedRequest('THROTTLE', 'system');
         res.status(429).json(body);
         return false;
       }
       if (status === 403) {
+        this.metrics.recordBlockedRequest('FORBIDDEN', 'system');
         throw new ForbiddenException(body);
       }
+      this.metrics.recordBlockedRequest('INVALID_KEY', 'system');
       throw new UnauthorizedException(body);
     }
 
@@ -117,6 +154,7 @@ export class ApiKeyGuard implements CanActivate {
       res.setHeader('X-RateLimit-Reset', String(rateLimit.resetAt));
 
       if (rateLimit.exceeded) {
+        this.metrics.recordBlockedRequest('RATE_LIMIT', result.tenant!.id);
         res.status(429).json({
           success: false,
           error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
@@ -127,6 +165,7 @@ export class ApiKeyGuard implements CanActivate {
 
     const subscription = await this.subscriptionService.validateAccess(result.tenant!.id);
     if (!subscription.allowed) {
+      this.metrics.recordBlockedRequest('SUBSCRIPTION', result.tenant!.id);
       res.status(403).json({
         success: false,
         error: {
@@ -139,6 +178,7 @@ export class ApiKeyGuard implements CanActivate {
 
     const featureEnabled = await this.subscriptionService.validateFeatureAccess(result.tenant!.id, req.path);
     if (!featureEnabled) {
+      this.metrics.recordBlockedRequest('FEATURE_DISABLED', result.tenant!.id);
       res.status(403).json({
         success: false,
         error: {
@@ -160,18 +200,22 @@ export class ApiKeyGuard implements CanActivate {
       res.setHeader('X-Quota-Used', String(quota.used));
       res.setHeader('X-Quota-Remaining', String(quota.remaining ?? 0));
       res.setHeader('X-Quota-Reset', String(quota.resetAt));
+      this.metrics.recordQuotaUsage(result.tenant!.id, quota.used, quota.limit);
       if (quota.softLimitReached && !quota.exceeded) {
         res.setHeader('X-Quota-Warning', 'SOFT_LIMIT_REACHED');
       }
     }
 
     if (quota.exceeded) {
+      this.metrics.recordBlockedRequest('QUOTA', result.tenant!.id);
       res.status(403).json({
         success: false,
         error: { code: 'PLAN_LIMIT_REACHED', message: 'Monthly quota exceeded' },
       });
       return false;
     }
+
+    await this.abuseService.clear('api_key', abuseIdentifier);
 
     return true;
   }
