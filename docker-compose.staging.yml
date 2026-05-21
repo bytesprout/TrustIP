@@ -1,29 +1,30 @@
-# Production overrides
+# Staging overrides
 services:
   api:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      APP_ENV: production
+      APP_ENV: staging
       NODE_ENV: production
-      GEO_ENGINE_DATASET_PATH: /data/datasets/current/geolite
-    volumes:
-      - ./data/datasets:/data/datasets:rw
+      APP_URL: https://api-staging.trustip.io
+      ADMIN_URL: https://admin-staging.trustip.io
     restart: always
 
   admin:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
       NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api-staging.trustip.io
+      NEXTAUTH_URL: https://admin-staging.trustip.io
     restart: always
 
   postgres:
-    ports: [] # Don't expose DB port in production
+    ports: []
     restart: always
 
   redis:
-    ports: [] # Don't expose Redis port in production
+    ports: []
     restart: always
 
   nginx:
@@ -37,32 +38,28 @@ services:
 
   worker:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      APP_ENV: production
-      NODE_ENV: production
+      APP_ENV: staging
     restart: always
 
   geo-engine:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      APP_ENV: production
-      NODE_ENV: production
+      APP_ENV: staging
     restart: always
 
   trust-engine:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      APP_ENV: production
-      NODE_ENV: production
+      APP_ENV: staging
     restart: always
 
   dataset-updater:
     env_file:
-      - .env.production
+      - .env.staging
     environment:
-      APP_ENV: production
-      NODE_ENV: production
+      APP_ENV: staging
     restart: always

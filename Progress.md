@@ -16,15 +16,15 @@
 | PHASE_07 | `PHASE_07_BILLING.md` | ✅ Completed |
 | PHASE_08 | `PHASE_08_ADMIN_PANEL.md` | ✅ Completed |
 | PHASE_09 | `PHASE_09_SECURITY_MONITORING.md` | ✅ Completed |
-| PHASE_10 | `PHASE_10_DEPLOYMENT.md` | ⏳ Pending |
+| PHASE_10 | `PHASE_10_DEPLOYMENT.md` | ✅ Completed |
 | PHASE_11 | `PHASE_11_TESTING.md` | ⏳ Pending |
 | PHASE_12 | `PHASE_12_PRODUCTION.md` | ⏳ Pending |
 
 ## Current Overall Progress
 
-- **Completed:** 9 / 12 phases
-- **Progress:** **75.0%**
-- **Current milestone:** Phase 09 complete, next is Phase 10
+- **Completed:** 10 / 12 phases
+- **Progress:** **83.3%**
+- **Current milestone:** Phase 10 complete, next is Phase 11
 
 ## Completion Notes
 
@@ -54,6 +54,13 @@
 - Added full monitoring stack configuration under `infrastructure/monitoring` (Prometheus, Grafana, Loki, OTel, alert rules) and wired services into `docker-compose.yml`.
 - Added backup and disaster recovery scripts under `infrastructure/backups` and `infrastructure/scripts/disaster-recovery.sh`.
 - Validated shared packages, API, and Admin via build/typecheck/lint and API Jest suites (`20/20 suites`).
+- 2026-05-21: Completed Phase 10 deployment, infrastructure, and CI/CD baseline.
+- Added required deployment structure under `infrastructure/docker`, `infrastructure/environments`, `infrastructure/nginx/conf.d`, `infrastructure/nginx/templates`, and `infrastructure/ci`.
+- Added deployment automation scripts (`deploy.sh`, `rollback.sh`, `backup.sh`, `restore.sh`) and environment-aware health validation.
+- Added staging and production deployment workflows with manual production approval and rollback hook.
+- Added staging compose override and strengthened production override for environment isolation and role services.
+- Added immutable image tag support (`API_IMAGE_TAG`, `ADMIN_IMAGE_TAG`) and compose validation for dev/staging/prod.
+- Validated docker compose configs and full workspace checks: shared package builds, API typecheck/lint/jest, and Admin typecheck/lint.
 
 ## Update Rule (For Future Progress Tracking)
 

@@ -2,11 +2,49 @@
 version: '3.9'
 services:
   api:
+    env_file:
+      - .env.development
     build:
       target: builder
     volumes:
       - ./apps/api/src:/app/apps/api/src
       - ./packages:/app/packages
+    command: sh -c "npx prisma migrate deploy && npx nest start --watch"
+    environment:
+      APP_ENV: development
+
+  worker:
+    env_file:
+      - .env.development
+    build:
+      target: builder
+    command: sh -c "npx prisma migrate deploy && npx nest start --watch"
+    environment:
+      APP_ENV: development
+
+  geo-engine:
+    env_file:
+      - .env.development
+    build:
+      target: builder
+    command: sh -c "npx prisma migrate deploy && npx nest start --watch"
+    environment:
+      APP_ENV: development
+
+  trust-engine:
+    env_file:
+      - .env.development
+    build:
+      target: builder
+    command: sh -c "npx prisma migrate deploy && npx nest start --watch"
+    environment:
+      APP_ENV: development
+
+  dataset-updater:
+    env_file:
+      - .env.development
+    build:
+      target: builder
     command: sh -c "npx prisma migrate deploy && npx nest start --watch"
     environment:
       APP_ENV: development

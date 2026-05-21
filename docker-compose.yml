@@ -56,13 +56,12 @@ services:
   # NestJS API
   # ============================================================
   api:
+    image: trustip/api:${API_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: trustip-api
     restart: unless-stopped
-    env_file:
-      - .env.development
     environment:
       DATABASE_URL: postgresql://trustip:${POSTGRES_PASSWORD:-trustip_dev_password}@postgres:5432/trustip_db
       REDIS_HOST: redis
@@ -87,7 +86,143 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Geo Engine Runtime Node (scaling role)
+  # ============================================================
+  geo-engine:
+    image: trustip/api:${API_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trustip-geo-engine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://trustip:${POSTGRES_PASSWORD:-trustip_dev_password}@postgres:5432/trustip_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      APP_URL: http://geo-engine:8080
+      ADMIN_URL: http://admin:3000
+      APP_COMPONENT: geo-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/main"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Trust Engine Runtime Node (scaling role)
+  # ============================================================
+  trust-engine:
+    image: trustip/api:${API_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trustip-trust-engine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://trustip:${POSTGRES_PASSWORD:-trustip_dev_password}@postgres:5432/trustip_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      APP_URL: http://trust-engine:8080
+      ADMIN_URL: http://admin:3000
+      APP_COMPONENT: trust-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/main"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Dataset Updater Runtime Node (scaling role)
+  # ============================================================
+  dataset-updater:
+    image: trustip/api:${API_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trustip-dataset-updater
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://trustip:${POSTGRES_PASSWORD:-trustip_dev_password}@postgres:5432/trustip_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      APP_URL: http://dataset-updater:8080
+      ADMIN_URL: http://admin:3000
+      APP_COMPONENT: dataset-updater
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/main"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - trustip-network
+
+  # ============================================================
+  # Worker Runtime Node (queue-focused role)
+  # ============================================================
+  worker:
+    image: trustip/api:${API_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trustip-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://trustip:${POSTGRES_PASSWORD:-trustip_dev_password}@postgres:5432/trustip_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      APP_URL: http://worker:8080
+      ADMIN_URL: http://admin:3000
+      APP_COMPONENT: worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/main"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -99,6 +234,7 @@ services:
   # Next.js Admin Panel
   # ============================================================
   admin:
+    image: trustip/admin:${ADMIN_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/admin/Dockerfile

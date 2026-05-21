@@ -1,0 +1,44 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Build and Deploy Staging
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: trustip/api:staging
+
+      - name: Build Admin image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/admin/Dockerfile
+          push: false
+          tags: trustip/admin:staging
+
+      - name: Deploy staging stack
+        run: |
+          chmod +x infrastructure/scripts/deploy.sh infrastructure/scripts/healthcheck.sh infrastructure/ci/smoke-test.sh
+          cp infrastructure/environments/staging/.env.template .env.staging
+          SKIP_PULL=1 ./infrastructure/scripts/deploy.sh staging
+
+      - name: Run staging smoke tests
+        run: ./infrastructure/ci/smoke-test.sh http://localhost:8080
