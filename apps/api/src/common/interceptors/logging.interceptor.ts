@@ -19,7 +19,11 @@ export class LoggingInterceptor implements NestInterceptor {
     const response = context.switchToHttp().getResponse<Response>();
 
     const requestId = (request.headers['x-request-id'] as string | undefined) ?? uuidv4();
-    const tenantId = (request as Request & { tenantId?: string }).tenantId ?? 'system';
+    const tenantId = (
+      request as Request & { tenant?: { id?: string }; user?: { tenantId?: string | null } }
+    ).tenant?.id ?? (
+      request as Request & { user?: { tenantId?: string | null } }
+    ).user?.tenantId ?? 'system';
 
     response.setHeader('x-request-id', requestId);
     (request as Request & { requestId: string }).requestId = requestId;

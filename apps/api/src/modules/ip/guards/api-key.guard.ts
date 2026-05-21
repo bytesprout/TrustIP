@@ -9,12 +9,21 @@ import {
 import type { Request, Response } from 'express';
 import { TenantValidationService } from '../services/tenant-validation.service';
 import type { AuthenticatedRequest } from '../interfaces/ip.interfaces';
+import { QuotaService } from '../../tenant/services/quota.service';
+import { ConfigService } from '../../../config/config.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { API_SCOPES } from '../constants/ip.constants';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
 
-  constructor(private readonly tenantValidation: TenantValidationService) {}
+  constructor(
+    private readonly tenantValidation: TenantValidationService,
+    private readonly quotaService: QuotaService,
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const http = context.switchToHttp();
@@ -23,6 +32,45 @@ export class ApiKeyGuard implements CanActivate {
 
     const rawApiKey = req.headers['x-api-key'] as string | undefined;
     if (!rawApiKey) {
+      if (this.config.isEnterpriseMode) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { slug: 'enterprise-internal' },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            isActive: true,
+            status: true,
+            rateLimitPerMinute: true,
+            rateLimitEnabled: true,
+            quotaEnabled: true,
+            monthlyRequestLimit: true,
+            quotaSoftLimitPercent: true,
+            domainLockMode: true,
+            allowedDomains: true,
+            ipWhitelistMode: true,
+            allowedIps: true,
+          },
+        });
+
+        if (!tenant) {
+          throw new UnauthorizedException({
+            success: false,
+            error: { code: 'INVALID_API_KEY', message: 'Missing x-api-key header' },
+          });
+        }
+
+        req.tenant = tenant;
+        req.apiKey = {
+          id: 'enterprise-internal',
+          tenantId: tenant.id,
+          scopes: Object.values(API_SCOPES),
+          keyPrefix: 'enterprise',
+        };
+        req.requestStartTime = Date.now();
+        return true;
+      }
+
       throw new UnauthorizedException({
         success: false,
         error: { code: 'INVALID_API_KEY', message: 'Missing x-api-key header' },
@@ -56,20 +104,40 @@ export class ApiKeyGuard implements CanActivate {
     req.apiKey = result.apiKey!;
     req.requestStartTime = Date.now();
 
-    // Check rate limit and set headers
-    const rateLimit = await this.tenantValidation.checkRateLimit(
-      result.tenant!.id,
-      result.tenant!.rateLimitPerMinute,
-    );
+    if (result.tenant!.rateLimitEnabled) {
+      const rateLimit = await this.tenantValidation.checkRateLimit(
+        result.tenant!.id,
+        result.tenant!.rateLimitPerMinute,
+      );
 
-    res.setHeader('X-RateLimit-Limit', String(rateLimit.limit));
-    res.setHeader('X-RateLimit-Remaining', String(rateLimit.remaining));
-    res.setHeader('X-RateLimit-Reset', String(rateLimit.resetAt));
+      res.setHeader('X-RateLimit-Limit', String(rateLimit.limit));
+      res.setHeader('X-RateLimit-Remaining', String(rateLimit.remaining));
+      res.setHeader('X-RateLimit-Reset', String(rateLimit.resetAt));
 
-    if (rateLimit.exceeded) {
-      res.status(429).json({
+      if (rateLimit.exceeded) {
+        res.status(429).json({
+          success: false,
+          error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
+        });
+        return false;
+      }
+    }
+
+    const quota = await this.quotaService.checkAndConsume(result.tenant!.id);
+    if (quota.limit !== null) {
+      res.setHeader('X-Quota-Limit', String(quota.limit));
+      res.setHeader('X-Quota-Used', String(quota.used));
+      res.setHeader('X-Quota-Remaining', String(quota.remaining ?? 0));
+      res.setHeader('X-Quota-Reset', String(quota.resetAt));
+      if (quota.softLimitReached && !quota.exceeded) {
+        res.setHeader('X-Quota-Warning', 'SOFT_LIMIT_REACHED');
+      }
+    }
+
+    if (quota.exceeded) {
+      res.status(403).json({
         success: false,
-        error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
+        error: { code: 'PLAN_LIMIT_REACHED', message: 'Monthly quota exceeded' },
       });
       return false;
     }

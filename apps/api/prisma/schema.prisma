@@ -45,6 +45,31 @@ enum IpWhitelistMode {
   STRICT
 }
 
+enum TenantStatus {
+  ACTIVE
+  DISABLED
+  SUSPENDED
+  TRIAL
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+  EXPIRED
+}
+
+enum TenantDomainMode {
+  DISABLED
+  STRICT
+  WILDCARD
+}
+
+enum WhitelistEntryType {
+  SINGLE
+  CIDR
+}
+
 // ============================================================
 // TENANT
 // ============================================================
@@ -53,8 +78,17 @@ model Tenant {
   id                 String          @id @default(uuid())
   name               String
   slug               String          @unique
+  companyName        String?         @map("company_name")
+  status             TenantStatus    @default(ACTIVE)
   mode               AppMode         @default(saas)
   isActive           Boolean         @default(true)
+  subscriptionPlanId String?         @map("subscription_plan_id")
+  analyticsEnabled   Boolean         @default(true) @map("analytics_enabled")
+  analyticsRetentionDays Int?        @default(90) @map("analytics_retention_days")
+  rateLimitEnabled   Boolean         @default(true) @map("rate_limit_enabled")
+  quotaEnabled       Boolean         @default(true) @map("quota_enabled")
+  monthlyRequestLimit Int?           @default(100000) @map("monthly_request_limit")
+  quotaSoftLimitPercent Int          @default(80) @map("quota_soft_limit_percent")
   rateLimitPerMinute Int             @default(100) @map("rate_limit_per_minute")
   domainLockMode     DomainLockMode  @default(DISABLED) @map("domain_lock_mode")
   allowedDomains     String[]        @map("allowed_domains")
@@ -65,6 +99,9 @@ model Tenant {
 
   users         User[]
   apiKeys       ApiKey[]
+  domains       TenantDomain[]
+  ipWhitelist   TenantIpWhitelist[]
+  usageMetrics  UsageMetric[]
   featureFlags  FeatureFlag[]
   auditLogs     AuditLog[]
   apiUsageLogs  ApiUsageLog[]
@@ -128,8 +165,10 @@ model ApiKey {
   name         String
   tenantId     String    @map("tenant_id")
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status       ApiKeyStatus @default(ACTIVE)
   scopes       String[]
   isActive     Boolean   @default(true) @map("is_active")
+  requestLimit Int?      @map("request_limit")
   expiresAt    DateTime? @map("expires_at")
   lastUsedAt   DateTime? @map("last_used_at")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -138,6 +177,48 @@ model ApiKey {
   @@index([tenantId])
   @@index([keyHash])
   @@map("api_keys")
+}
+
+model TenantDomain {
+  id        String           @id @default(uuid())
+  tenantId  String           @map("tenant_id")
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  domain    String
+  mode      TenantDomainMode @default(STRICT)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@unique([tenantId, domain])
+  @@index([tenantId])
+  @@map("tenant_domains")
+}
+
+model TenantIpWhitelist {
+  id        String             @id @default(uuid())
+  tenantId  String             @map("tenant_id")
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ip        String
+  type      WhitelistEntryType
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  @@unique([tenantId, ip])
+  @@index([tenantId])
+  @@map("tenant_ip_whitelist")
+}
+
+model UsageMetric {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endpoint        String
+  requestCount    Int      @default(0) @map("request_count")
+  country         String?
+  vpnHits         Int      @default(0) @map("vpn_hits")
+  blockedRequests Int      @default(0) @map("blocked_requests")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@map("usage_metrics")
 }
 
 // ============================================================

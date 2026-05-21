@@ -26,7 +26,12 @@ export interface ResolvedTenant {
   name: string;
   slug: string;
   isActive: boolean;
+  status: string;
   rateLimitPerMinute: number;
+  rateLimitEnabled: boolean;
+  quotaEnabled: boolean;
+  monthlyRequestLimit: number | null;
+  quotaSoftLimitPercent: number;
   domainLockMode: string;
   allowedDomains: string[];
   ipWhitelistMode: string;
@@ -184,6 +189,6 @@ export interface AnalyticsTrackPayload {
 import type { ApiKey, Tenant } from '@prisma/client';
 
 // Cached API key (stored in Redis)
-export type CachedApiKey = Pick<ApiKey, 'id' | 'tenantId' | 'scopes' | 'keyPrefix' | 'expiresAt' | 'isActive'> & {
-  tenant: Pick<Tenant, 'id' | 'name' | 'slug' | 'isActive' | 'rateLimitPerMinute' | 'domainLockMode' | 'allowedDomains' | 'ipWhitelistMode' | 'allowedIps'>;
+export type CachedApiKey = Pick<ApiKey, 'id' | 'tenantId' | 'scopes' | 'keyPrefix' | 'expiresAt' | 'isActive' | 'status'> & {
+  tenant: Pick<Tenant, 'id' | 'name' | 'slug' | 'isActive' | 'status' | 'rateLimitEnabled' | 'rateLimitPerMinute' | 'quotaEnabled' | 'monthlyRequestLimit' | 'quotaSoftLimitPercent' | 'domainLockMode' | 'allowedDomains' | 'ipWhitelistMode' | 'allowedIps'>;
 };

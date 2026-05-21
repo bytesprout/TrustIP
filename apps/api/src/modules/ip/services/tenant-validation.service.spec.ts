@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { DOMAIN_LOCK_MODES, IP_WHITELIST_MODES } from '../constants/ip.constants';
 import * as crypto from 'crypto';
+import { ApiKeyStatus } from '@prisma/client';
 
 const RAW_KEY = 'tk_abc1validkeyfor123';
 const HASH = crypto.createHash('sha256').update(RAW_KEY).digest('hex');
@@ -12,6 +13,7 @@ const buildMockApiKey = (tenantOverrides: Record<string, unknown> = {}, keyOverr
   keyHash: HASH,
   keyPrefix: 'tk_abc1',
   isActive: true,
+  status: ApiKeyStatus.ACTIVE,
   expiresAt: null,
   scopes: ['basic_lookup'],
   tenant: {
@@ -19,7 +21,12 @@ const buildMockApiKey = (tenantOverrides: Record<string, unknown> = {}, keyOverr
     name: 'Test Tenant',
     slug: 'test',
     isActive: true,
+    status: 'ACTIVE',
+    rateLimitEnabled: true,
     rateLimitPerMinute: 60,
+    quotaEnabled: true,
+    monthlyRequestLimit: 100000,
+    quotaSoftLimitPercent: 80,
     domainLockMode: DOMAIN_LOCK_MODES.DISABLED,
     allowedDomains: [],
     ipWhitelistMode: IP_WHITELIST_MODES.DISABLED,
@@ -44,6 +51,12 @@ const mockPrisma = {
     findMany: jest.fn(),
     update: jest.fn().mockResolvedValue({}),
   },
+  tenantDomain: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
+  tenantIpWhitelist: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
 } as unknown as PrismaService;
 
 /** Helper to mock DB returning one key (findMany returns array) */
@@ -61,6 +74,8 @@ describe('TenantValidationService', () => {
     (mockRedisClient.expire as jest.Mock).mockResolvedValue(1);
     (mockRedis.getJson as jest.Mock).mockResolvedValue(null);
     (mockRedis.setJson as jest.Mock).mockResolvedValue(undefined);
+    (mockPrisma.tenantDomain.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.tenantIpWhitelist.findMany as jest.Mock).mockResolvedValue([]);
     service = new TenantValidationService(mockPrisma, mockRedis);
   });
 

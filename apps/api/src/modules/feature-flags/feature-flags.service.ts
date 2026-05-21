@@ -55,11 +55,13 @@ export class FeatureFlagsService {
     value: boolean,
     tenantId: string | null,
   ): Promise<FeatureFlagResponse> {
-    const flag = await this.prisma.featureFlag.upsert({
-      where: { key_tenantId: { key, tenantId: tenantId ?? '' } },
-      update: { value },
-      create: { key, value, tenantId },
-    });
+    const flag = tenantId
+      ? await this.prisma.featureFlag.upsert({
+        where: { key_tenantId: { key, tenantId } },
+        update: { value },
+        create: { key, value, tenantId },
+      })
+      : await this.updateGlobalFlag(key, value);
 
     // Invalidate cache
     const cacheKey = tenantId
@@ -70,5 +72,22 @@ export class FeatureFlagsService {
     this.logger.log(`Feature flag updated: ${key} = ${String(value)} (tenant: ${tenantId ?? 'global'})`);
 
     return { key: flag.key, value: flag.value, tenantId: flag.tenantId };
+  }
+
+  private async updateGlobalFlag(key: string, value: boolean) {
+    const existing = await this.prisma.featureFlag.findFirst({
+      where: { key, tenantId: null },
+    });
+
+    if (existing) {
+      return this.prisma.featureFlag.update({
+        where: { id: existing.id },
+        data: { value },
+      });
+    }
+
+    return this.prisma.featureFlag.create({
+      data: { key, value, tenantId: null },
+    });
   }
 }

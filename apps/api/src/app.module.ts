@@ -12,6 +12,7 @@ import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module
 import { SystemModule } from './modules/system/system.module';
 import { IpModule } from './modules/ip/ip.module';
 import { DatasetModule } from './modules/dataset/dataset.module';
+import { TenantModule } from './modules/tenant/tenant.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ConfigService } from './config/config.service';
@@ -49,6 +50,7 @@ import { ConfigService } from './config/config.service';
     HealthModule,
     FeatureFlagsModule,
     SystemModule,
+    TenantModule,
     IpModule,
     DatasetModule,
   ],

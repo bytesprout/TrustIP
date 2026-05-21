@@ -12,6 +12,7 @@ import {
   RATE_LIMIT_WINDOW_SECONDS,
 } from '../constants/ip.constants';
 import type { CachedApiKey, ResolvedApiKey, ResolvedTenant } from '../interfaces/ip.interfaces';
+import { ApiKeyStatus } from '@prisma/client';
 
 export interface ValidationResult {
   valid: boolean;
@@ -54,6 +55,9 @@ export class TenantValidationService {
     if (!resolved.isActive) {
       return { valid: false, errorCode: 'INVALID_API_KEY', errorMessage: 'API key is inactive' };
     }
+    if (resolved.status !== ApiKeyStatus.ACTIVE) {
+      return { valid: false, errorCode: 'INVALID_API_KEY', errorMessage: 'API key is inactive' };
+    }
     if (resolved.expiresAt && resolved.expiresAt < new Date()) {
       return { valid: false, errorCode: 'API_KEY_EXPIRED', errorMessage: 'API key has expired' };
     }
@@ -62,17 +66,24 @@ export class TenantValidationService {
     if (!resolved.tenant.isActive) {
       return { valid: false, errorCode: 'TENANT_DISABLED', errorMessage: 'Tenant access disabled' };
     }
+    if (resolved.tenant.status !== 'ACTIVE' && resolved.tenant.status !== 'TRIAL') {
+      return { valid: false, errorCode: 'TENANT_DISABLED', errorMessage: 'Tenant access disabled' };
+    }
+
+    const allowedDomains = await this.resolveAllowedDomains(resolved.tenant.id, resolved.tenant.allowedDomains);
+    const allowedIps = await this.resolveAllowedIps(resolved.tenant.id, resolved.tenant.allowedIps);
 
     // 4. Domain lock validation
-    const domainResult = this.validateDomainLock(
+    const domainResult = await this.validateDomainLock(
       resolved.tenant,
+      allowedDomains,
       requestOrigin,
       requestReferer,
     );
     if (!domainResult.valid) return domainResult;
 
     // 5. IP whitelist validation
-    const ipResult = this.validateIpWhitelist(resolved.tenant, callerIp);
+    const ipResult = await this.validateIpWhitelist(resolved.tenant, allowedIps, callerIp);
     if (!ipResult.valid) return ipResult;
 
     // Update last used (fire-and-forget)
@@ -93,11 +104,16 @@ export class TenantValidationService {
         name: resolved.tenant.name,
         slug: resolved.tenant.slug,
         isActive: resolved.tenant.isActive,
+        status: resolved.tenant.status,
         rateLimitPerMinute: resolved.tenant.rateLimitPerMinute,
+        rateLimitEnabled: resolved.tenant.rateLimitEnabled,
+        quotaEnabled: resolved.tenant.quotaEnabled,
+        monthlyRequestLimit: resolved.tenant.monthlyRequestLimit,
+        quotaSoftLimitPercent: resolved.tenant.quotaSoftLimitPercent,
         domainLockMode: resolved.tenant.domainLockMode,
-        allowedDomains: resolved.tenant.allowedDomains,
+        allowedDomains,
         ipWhitelistMode: resolved.tenant.ipWhitelistMode,
-        allowedIps: resolved.tenant.allowedIps,
+        allowedIps,
       },
     };
   }
@@ -151,7 +167,7 @@ export class TenantValidationService {
 
     // Database lookup by prefix
     const apiKeys = await this.prisma.apiKey.findMany({
-      where: { keyPrefix: prefix, isActive: true },
+      where: { keyPrefix: prefix, isActive: true, status: ApiKeyStatus.ACTIVE },
       include: {
         tenant: {
           select: {
@@ -159,7 +175,12 @@ export class TenantValidationService {
             name: true,
             slug: true,
             isActive: true,
+            status: true,
+            rateLimitEnabled: true,
             rateLimitPerMinute: true,
+            quotaEnabled: true,
+            monthlyRequestLimit: true,
+            quotaSoftLimitPercent: true,
             domainLockMode: true,
             allowedDomains: true,
             ipWhitelistMode: true,
@@ -183,6 +204,7 @@ export class TenantValidationService {
       keyPrefix: matched.keyPrefix,
       expiresAt: matched.expiresAt,
       isActive: matched.isActive,
+      status: matched.status,
       tenant: matched.tenant,
     };
 
@@ -217,11 +239,12 @@ export class TenantValidationService {
     }
   }
 
-  private validateDomainLock(
+  private async validateDomainLock(
     tenant: ResolvedTenant,
+    allowedDomains: string[],
     origin: string | undefined,
     referer: string | undefined,
-  ): ValidationResult {
+  ): Promise<ValidationResult> {
     if (tenant.domainLockMode === DOMAIN_LOCK_MODES.DISABLED) {
       return { valid: true };
     }
@@ -235,7 +258,7 @@ export class TenantValidationService {
       };
     }
 
-    const allowed = tenant.allowedDomains;
+    const allowed = allowedDomains;
     if (!allowed || allowed.length === 0) return { valid: true };
 
     if (tenant.domainLockMode === DOMAIN_LOCK_MODES.STRICT) {
@@ -260,10 +283,11 @@ export class TenantValidationService {
     return { valid: true };
   }
 
-  private validateIpWhitelist(
+  private async validateIpWhitelist(
     tenant: ResolvedTenant,
+    allowedIps: string[],
     callerIp: string | undefined,
-  ): ValidationResult {
+  ): Promise<ValidationResult> {
     if (tenant.ipWhitelistMode === IP_WHITELIST_MODES.DISABLED) {
       return { valid: true };
     }
@@ -276,7 +300,7 @@ export class TenantValidationService {
       };
     }
 
-    const allowed = tenant.allowedIps;
+    const allowed = allowedIps;
     if (!allowed || allowed.length === 0) return { valid: true };
 
     const isAllowed = allowed.some((entry) => this.ipMatchesCidrOrExact(callerIp, entry));
@@ -289,6 +313,32 @@ export class TenantValidationService {
     }
 
     return { valid: true };
+  }
+
+  private async resolveAllowedDomains(tenantId: string, fallback: string[]): Promise<string[]> {
+    const rows = await this.prisma.tenantDomain.findMany({
+      where: { tenantId },
+      select: { domain: true },
+    });
+
+    if (rows.length === 0) {
+      return fallback;
+    }
+
+    return rows.map((row) => row.domain);
+  }
+
+  private async resolveAllowedIps(tenantId: string, fallback: string[]): Promise<string[]> {
+    const rows = await this.prisma.tenantIpWhitelist.findMany({
+      where: { tenantId },
+      select: { ip: true },
+    });
+
+    if (rows.length === 0) {
+      return fallback;
+    }
+
+    return rows.map((row) => row.ip);
   }
 
   private extractHostFromOriginOrReferer(
