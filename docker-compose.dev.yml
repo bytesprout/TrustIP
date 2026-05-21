@@ -1,0 +1,21 @@
+# Development overrides — uses hot reload
+version: '3.9'
+services:
+  api:
+    build:
+      target: builder
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
+    command: sh -c "npx prisma migrate deploy && npx nest start --watch"
+    environment:
+      APP_ENV: development
+
+  admin:
+    build:
+      target: builder
+    volumes:
+      - ./apps/admin/src:/app/apps/admin/src
+    command: pnpm --filter @trustip/admin dev
+    environment:
+      NODE_ENV: development

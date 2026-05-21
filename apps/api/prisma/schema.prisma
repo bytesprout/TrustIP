@@ -1,0 +1,341 @@
+// This is your Prisma schema file
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum AppMode {
+  saas
+  enterprise
+}
+
+enum Role {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  TENANT_MANAGER
+  VIEWER
+}
+
+enum FeatureFlagKeyEnum {
+  trustEngine
+  billing
+  geoAnomaly
+  analytics
+  vpnDetection
+}
+
+enum DomainLockMode {
+  DISABLED
+  STRICT
+  WILDCARD
+}
+
+enum IpWhitelistMode {
+  DISABLED
+  STRICT
+}
+
+// ============================================================
+// TENANT
+// ============================================================
+
+model Tenant {
+  id                 String          @id @default(uuid())
+  name               String
+  slug               String          @unique
+  mode               AppMode         @default(saas)
+  isActive           Boolean         @default(true)
+  rateLimitPerMinute Int             @default(100) @map("rate_limit_per_minute")
+  domainLockMode     DomainLockMode  @default(DISABLED) @map("domain_lock_mode")
+  allowedDomains     String[]        @map("allowed_domains")
+  ipWhitelistMode    IpWhitelistMode @default(DISABLED) @map("ip_whitelist_mode")
+  allowedIps         String[]        @map("allowed_ips")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  users         User[]
+  apiKeys       ApiKey[]
+  featureFlags  FeatureFlag[]
+  auditLogs     AuditLog[]
+  apiUsageLogs  ApiUsageLog[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// USER
+// ============================================================
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String         @map("password_hash")
+  role         Role           @default(VIEWER)
+  tenantId     String?        @map("tenant_id")
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  isActive     Boolean        @default(true) @map("is_active")
+  lastLoginAt  DateTime?      @map("last_login_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ============================================================
+// REFRESH TOKEN
+// ============================================================
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique @map("token_hash")
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime @map("expires_at")
+  isRevoked  Boolean  @default(false) @map("is_revoked")
+  userAgent  String?  @map("user_agent")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// API KEY
+// ============================================================
+
+model ApiKey {
+  id           String    @id @default(uuid())
+  keyHash      String    @unique @map("key_hash")
+  keyPrefix    String    @map("key_prefix")
+  name         String
+  tenantId     String    @map("tenant_id")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scopes       String[]
+  isActive     Boolean   @default(true) @map("is_active")
+  expiresAt    DateTime? @map("expires_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ============================================================
+// FEATURE FLAG
+// ============================================================
+
+model FeatureFlag {
+  id        String   @id @default(uuid())
+  key       String
+  value     Boolean  @default(false)
+  tenantId  String?  @map("tenant_id")
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([key, tenantId])
+  @@index([tenantId])
+  @@map("feature_flags")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String?  @map("tenant_id")
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// SYSTEM CONFIG
+// ============================================================
+
+model SystemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
+// ============================================================
+// API USAGE LOG (analytics)
+// ============================================================
+
+model ApiUsageLog {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeyId    String?  @map("api_key_id")
+  endpoint    String
+  queryIp     String   @map("query_ip")
+  country     String?
+  statusCode  Int      @map("status_code")
+  latencyMs   Int      @map("latency_ms")
+  cacheHit    Boolean  @default(false) @map("cache_hit")
+  scope       String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([endpoint])
+  @@index([createdAt])
+  @@map("api_usage_logs")
+}
+
+// ============================================================
+// IP LOOKUP LOG
+// ============================================================
+
+model IpLookupLog {
+  id          String   @id @default(uuid())
+  tenantId    String?  @map("tenant_id")
+  ip          String
+  country     String?
+  countryCode String?  @map("country_code")
+  city        String?
+  asn         Int?
+  isp         String?
+  cacheHit    Boolean  @default(false) @map("cache_hit")
+  latencyMs   Int      @default(0) @map("latency_ms")
+  endpoint    String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([ip])
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ip_lookup_logs")
+}
+
+model DatasetRegistry {
+  id             String   @id @default(uuid())
+  datasetName    String   @unique @map("dataset_name")
+  datasetType    String   @map("dataset_type")
+  sourceUrl      String?  @map("source_url")
+  version        String?
+  checksum       String?
+  size           BigInt?
+  status         String   @default("ACTIVE")
+  lastUpdatedAt  DateTime? @map("last_updated_at")
+  failureReason  String?  @map("failure_reason")
+  rollbackVersion String? @map("rollback_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([datasetName])
+  @@index([status])
+  @@map("dataset_registry")
+}
+
+model DatasetUpdateLog {
+  id            String   @id @default(uuid())
+  datasetName   String   @map("dataset_name")
+  version       String?
+  status        String
+  durationMs    Int?     @map("duration_ms")
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([datasetName])
+  @@index([createdAt])
+  @@map("dataset_update_logs")
+}
+
+// ============================================================
+// PHASE 05 — TRUST ENGINE
+// ============================================================
+
+model TrustHistory {
+  id         String   @id @default(uuid()) @map("id")
+  tenantId   String   @map("tenant_id")
+  ip         String   @map("ip")
+  trustScore Int      @map("trust_score")
+  riskScore  Int      @map("risk_score")
+  decision   String   @map("decision")
+  signals    Json     @map("signals")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, ip])
+  @@map("trust_history")
+}
+
+model RiskEvent {
+  id        String   @id @default(uuid()) @map("id")
+  tenantId  String   @map("tenant_id")
+  ip        String   @map("ip")
+  eventType String   @map("event_type")
+  severity  String   @map("severity")
+  metadata  Json?    @map("metadata")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, ip])
+  @@map("risk_events")
+}
+
+model GeoVelocityLog {
+  id              String   @id @default(uuid()) @map("id")
+  tenantId        String   @map("tenant_id")
+  ip              String   @map("ip")
+  previousCountry String?  @map("previous_country")
+  newCountry      String   @map("new_country")
+  riskScore       Int      @map("risk_score")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, ip])
+  @@map("geo_velocity_logs")
+}
+
+model ConcurrentSessionLog {
+  id           String   @id @default(uuid()) @map("id")
+  tenantId     String   @map("tenant_id")
+  accountId    String   @map("account_id")
+  deviceCount  Int      @map("device_count")
+  countryCount Int      @map("country_count")
+  riskScore    Int      @map("risk_score")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, accountId])
+  @@map("concurrent_session_logs")
+}
