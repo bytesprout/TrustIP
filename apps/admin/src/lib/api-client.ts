@@ -1,4 +1,21 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+function getApiUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window === 'undefined') {
+    return configured ?? 'http://localhost:8080';
+  }
+
+  if (!configured) {
+    return window.location.origin;
+  }
+
+  // If a localhost URL was baked at build-time, prefer current origin in production.
+  if (configured.includes('localhost') && window.location.hostname !== 'localhost') {
+    return window.location.origin;
+  }
+
+  return configured;
+}
 
 export interface ApiClientOptions {
   token?: string;
@@ -34,7 +51,7 @@ export async function apiClient<T>(
     headers.Authorization = `Bearer ${resolvedToken}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiUrl()}${path}`, {
     ...fetchOptions,
     headers,
   });

@@ -41,7 +41,7 @@ export function useTenantApiKeys(tenantId?: string) {
 export function useCreateTenantApiKey(tenantId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { name: string; expiresAt?: string; requestLimitPerMinute?: number }) =>
+    mutationFn: (payload: { name: string; scopes: string[]; expiresAt?: string; requestLimit?: number }) =>
       adminService.createTenantApiKey(tenantId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['tenant-api-keys', tenantId] });
@@ -63,6 +63,25 @@ export function usePlans() {
   return useQuery({ queryKey: ['plans'], queryFn: adminService.plans });
 }
 
+export function useAllPlans(enabled = true) {
+  return useQuery({
+    queryKey: ['plans-all'],
+    queryFn: adminService.allPlans,
+    enabled,
+  });
+}
+
+export function useCreatePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: adminService.createPlan,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['plans'] });
+      await queryClient.invalidateQueries({ queryKey: ['plans-all'] });
+    },
+  });
+}
+
 export function useSubscriptions(tenantId?: string) {
   return useQuery({
     queryKey: ['subscriptions', tenantId],
@@ -81,6 +100,39 @@ export function useInvoices(tenantId?: string) {
 
 export function useFeatureFlags() {
   return useQuery({ queryKey: ['feature-flags'], queryFn: adminService.featureFlags });
+}
+
+export function useUpdateFeatureFlag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value }: { key: string; value: boolean }) =>
+      adminService.updateFeatureFlag(key, value),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['feature-flags'] });
+    },
+  });
+}
+
+export function useUpdateTenant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      tenantId,
+      payload,
+    }: {
+      tenantId: string;
+      payload: {
+        analyticsEnabled?: boolean;
+        quotaEnabled?: boolean;
+        rateLimitEnabled?: boolean;
+        monthlyRequestLimit?: number;
+        analyticsRetentionDays?: number;
+      };
+    }) => adminService.updateTenant(tenantId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['tenants'] });
+    },
+  });
 }
 
 export function useDatasetHealth() {

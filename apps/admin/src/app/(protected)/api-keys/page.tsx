@@ -25,6 +25,7 @@ export default function ApiKeysPage(): JSX.Element {
 
   const [tenantId, setTenantId] = useState<string>('');
   const [name, setName] = useState('default-key');
+  const [latestPlainKey, setLatestPlainKey] = useState('');
   const selectedTenantId = tenantId || defaultTenantId;
 
   const keysQuery = useTenantApiKeys(selectedTenantId);
@@ -74,12 +75,40 @@ export default function ApiKeysPage(): JSX.Element {
           type="button"
           className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
           onClick={() => {
-            createKey.mutate({ name });
+            createKey.mutate(
+              {
+                name,
+                scopes: ['basic_lookup'],
+              },
+              {
+                onSuccess: (result) => {
+                  setLatestPlainKey(result.plainKey);
+                },
+              },
+            );
           }}
         >
           Create key
         </button>
       </div>
+
+      {latestPlainKey ? (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">
+          <p className="text-sm font-semibold">New API key (shown once)</p>
+          <p className="mt-2 break-all rounded border border-emerald-200 bg-white px-3 py-2 font-mono text-xs">
+            {latestPlainKey}
+          </p>
+          <button
+            type="button"
+            className="mt-2 rounded-md border border-emerald-400 px-3 py-2 text-sm"
+            onClick={async () => {
+              await navigator.clipboard.writeText(latestPlainKey);
+            }}
+          >
+            Copy key
+          </button>
+        </div>
+      ) : null}
 
       {keysQuery.isLoading ? <LoadingState message="Loading key inventory..." /> : null}
       {keysQuery.error ? <ErrorState message="Unable to load keys." /> : null}

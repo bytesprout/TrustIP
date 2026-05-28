@@ -161,8 +161,9 @@ export class TenantValidationService {
           return cached;
         }
       }
-      // Hash mismatch — invalid key for this prefix
-      return null;
+      // Hash mismatch for cached record can happen when multiple keys share the same prefix.
+      // Fall through to DB lookup instead of rejecting the key immediately.
+      this.logger.debug(`API key cache miss after hash verification for prefix ${prefix}; falling back to DB lookup`);
     }
 
     // Database lookup by prefix

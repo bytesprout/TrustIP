@@ -31,13 +31,31 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message = exceptionResponse;
       } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const resp = exceptionResponse as Record<string, unknown>;
-        message = (resp['message'] as string | string[] | undefined)
-          ? Array.isArray(resp['message'])
-            ? (resp['message'] as string[]).join(', ')
-            : String(resp['message'])
-          : message;
-        code = String(resp['error'] ?? this.statusToCode(status));
-        details = resp['details'] as Record<string, unknown> | undefined;
+        const topLevelMessage = resp['message'] as string | string[] | undefined;
+        const nestedError =
+          typeof resp['error'] === 'object' && resp['error'] !== null
+            ? (resp['error'] as Record<string, unknown>)
+            : undefined;
+
+        if (topLevelMessage) {
+          message = Array.isArray(topLevelMessage)
+            ? topLevelMessage.join(', ')
+            : String(topLevelMessage);
+        } else if (typeof nestedError?.['message'] === 'string') {
+          message = nestedError['message'];
+        }
+
+        if (typeof nestedError?.['code'] === 'string') {
+          code = nestedError['code'];
+        } else if (typeof resp['error'] === 'string') {
+          code = resp['error'];
+        } else {
+          code = this.statusToCode(status);
+        }
+
+        details =
+          (nestedError?.['details'] as Record<string, unknown> | undefined) ??
+          (resp['details'] as Record<string, unknown> | undefined);
       }
     } else if (exception instanceof Error) {
       this.logger.error(`Unhandled exception: ${exception.message}`, exception.stack);

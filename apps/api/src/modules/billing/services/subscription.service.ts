@@ -106,20 +106,38 @@ export class SubscriptionService {
 
   async validateFeatureAccess(tenantId: string, requestPath: string): Promise<boolean> {
     const subscription = await this.latestForTenant(tenantId);
+
+    // In manual mode, tenants can access core API features even without a subscription row.
     if (!subscription) {
-      return false;
+      const mode = await this.getBillingMode();
+      return mode === BILLING_MODE.MANUAL;
     }
 
     const features = subscription.plan.features as Record<string, unknown>;
+    const featureEnabled = (...keys: string[]): boolean => {
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(features, key)) {
+          return Boolean(features[key]);
+        }
+      }
+      return false;
+    };
 
     if (requestPath.includes('/ip/basic')) {
-      return features.basic_lookup !== false;
+      // Keep backward compatibility with mixed key naming styles.
+      if (Object.prototype.hasOwnProperty.call(features, 'basic_lookup')) {
+        return features.basic_lookup !== false;
+      }
+      if (Object.prototype.hasOwnProperty.call(features, 'basicLookup')) {
+        return features.basicLookup !== false;
+      }
+      return true;
     }
     if (requestPath.includes('/ip/intelligence')) {
-      return Boolean(features.intelligence_lookup);
+      return featureEnabled('intelligence_lookup', 'intelligenceLookup');
     }
     if (requestPath.includes('/ip/trust-score')) {
-      return Boolean(features.trust_lookup);
+      return featureEnabled('trust_lookup', 'trustLookup', 'trustEngine');
     }
 
     return true;

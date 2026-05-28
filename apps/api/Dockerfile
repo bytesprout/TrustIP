@@ -13,10 +13,15 @@ WORKDIR /app
 # Copy workspace manifests
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
+COPY pnpm-lock.yaml ./
 COPY turbo.json ./
 
 # Copy all package.json files for dependency resolution
 COPY apps/api/package.json ./apps/api/
+COPY apps/api/prisma ./apps/api/prisma
+COPY services/geo-engine/package.json ./services/geo-engine/
+COPY services/trust-engine/package.json ./services/trust-engine/
+COPY services/dataset-updater/package.json ./services/dataset-updater/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/logger/package.json ./packages/logger/
@@ -24,9 +29,11 @@ COPY packages/eslint-config/package.json ./packages/eslint-config/
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @trustip/api exec prisma generate
 
 # Copy source
 COPY apps/api ./apps/api
+COPY services ./services
 COPY packages ./packages
 
 # Build packages first, then api
@@ -34,6 +41,9 @@ WORKDIR /app
 RUN pnpm --filter @trustip/shared-types build
 RUN pnpm --filter @trustip/shared-config build
 RUN pnpm --filter @trustip/logger build
+RUN pnpm --filter @trustip/geo-engine build
+RUN pnpm --filter @trustip/trust-engine build
+RUN pnpm --filter @trustip/dataset-updater build
 RUN pnpm --filter @trustip/api build
 
 # ============================================================
@@ -50,20 +60,29 @@ WORKDIR /app
 # Copy workspace files
 COPY pnpm-workspace.yaml ./
 COPY package.json ./
+COPY pnpm-lock.yaml ./
 
 # Copy production package manifests
 COPY apps/api/package.json ./apps/api/
+COPY apps/api/prisma ./apps/api/prisma
+COPY services/geo-engine/package.json ./services/geo-engine/
+COPY services/trust-engine/package.json ./services/trust-engine/
+COPY services/dataset-updater/package.json ./services/dataset-updater/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-config/package.json ./packages/shared-config/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 
-# Install production only
-RUN pnpm install --frozen-lockfile --prod
+# Install dependencies (includes prisma CLI for runtime client generation)
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @trustip/api exec prisma generate
 
 # Copy built output
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/services/geo-engine/dist ./services/geo-engine/dist
+COPY --from=builder /app/services/trust-engine/dist ./services/trust-engine/dist
+COPY --from=builder /app/services/dataset-updater/dist ./services/dataset-updater/dist
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/shared-config/dist ./packages/shared-config/dist
 COPY --from=builder /app/packages/logger/dist ./packages/logger/dist

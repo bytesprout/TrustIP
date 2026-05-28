@@ -5,7 +5,7 @@ import { useCreateTenant } from '@/hooks/use-admin-data';
 
 export function CreateTenantForm(): JSX.Element {
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const createTenant = useCreateTenant();
 
   return (
@@ -13,9 +13,9 @@ export function CreateTenantForm(): JSX.Element {
       className="grid gap-3 rounded-xl border border-border bg-card p-4 shadow-sm md:grid-cols-3"
       onSubmit={(event) => {
         event.preventDefault();
-        createTenant.mutate({ name, slug });
+        createTenant.mutate({ name, companyName: companyName || undefined });
         setName('');
-        setSlug('');
+        setCompanyName('');
       }}
     >
       <input
@@ -27,16 +27,16 @@ export function CreateTenantForm(): JSX.Element {
         placeholder="Tenant name"
       />
       <input
-        value={slug}
+        value={companyName}
         onChange={(event) => {
-          setSlug(event.target.value);
+          setCompanyName(event.target.value);
         }}
         className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-        placeholder="tenant-slug"
+        placeholder="Company name (optional)"
       />
       <button
         type="submit"
-        disabled={createTenant.isPending || !name || !slug}
+        disabled={createTenant.isPending || !name}
         className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
       >
         {createTenant.isPending ? 'Creating...' : 'Create Tenant'}

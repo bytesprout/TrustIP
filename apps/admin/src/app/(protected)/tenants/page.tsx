@@ -40,7 +40,7 @@ export default function TenantsPage(): JSX.Element {
             { key: 'name', label: 'Name' },
             { key: 'slug', label: 'Slug' },
             { key: 'status', label: 'Status' },
-            { key: 'planType', label: 'Plan' },
+            { key: 'mode', label: 'Mode' },
           ]}
           rows={tenants.data}
           rowKey={(row) => row.id}

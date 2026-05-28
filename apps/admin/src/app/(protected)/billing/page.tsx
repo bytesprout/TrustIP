@@ -4,7 +4,14 @@ import { useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { LoadingState } from '@/components/shared/loading-state';
-import { useCurrentUser, useInvoices, useSubscriptions, useTenants } from '@/hooks/use-admin-data';
+import {
+  useAllPlans,
+  useCreatePlan,
+  useCurrentUser,
+  useInvoices,
+  useSubscriptions,
+  useTenants,
+} from '@/hooks/use-admin-data';
 import { formatCurrency, formatDate } from '@/lib/format';
 
 export default function BillingPage(): JSX.Element {
@@ -16,6 +23,15 @@ export default function BillingPage(): JSX.Element {
 
   const subscriptions = useSubscriptions(tenantId);
   const invoices = useInvoices(tenantId);
+  const allPlans = useAllPlans(me.data?.role === 'SUPER_ADMIN');
+  const createPlan = useCreatePlan();
+
+  const [planName, setPlanName] = useState('Starter');
+  const [planSlug, setPlanSlug] = useState('starter');
+  const [monthlyPrice, setMonthlyPrice] = useState(29);
+  const [annualPrice, setAnnualPrice] = useState(299);
+  const [requestLimitMonthly, setRequestLimitMonthly] = useState(100000);
+  const [requestsPerMinute, setRequestsPerMinute] = useState(100);
 
   if (me.isLoading || tenants.isLoading) {
     return <LoadingState message="Loading billing..." />;
@@ -45,6 +61,56 @@ export default function BillingPage(): JSX.Element {
           </option>
         ))}
       </select>
+
+      {me.data?.role === 'SUPER_ADMIN' ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Plan Management (SUPER_ADMIN)</h2>
+          <div className="grid gap-2 rounded-xl border border-border bg-card p-4 shadow-sm md:grid-cols-3">
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Plan name" />
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={planSlug} onChange={(e) => setPlanSlug(e.target.value)} placeholder="plan-slug" />
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" type="number" value={monthlyPrice} onChange={(e) => setMonthlyPrice(Number(e.target.value))} placeholder="Monthly price" />
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" type="number" value={annualPrice} onChange={(e) => setAnnualPrice(Number(e.target.value))} placeholder="Annual price" />
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" type="number" value={requestLimitMonthly} onChange={(e) => setRequestLimitMonthly(Number(e.target.value))} placeholder="Monthly requests" />
+            <input className="rounded-md border border-input bg-background px-3 py-2 text-sm" type="number" value={requestsPerMinute} onChange={(e) => setRequestsPerMinute(Number(e.target.value))} placeholder="Requests/minute" />
+            <button
+              type="button"
+              className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+              disabled={createPlan.isPending}
+              onClick={() => {
+                createPlan.mutate({
+                  name: planName,
+                  slug: planSlug,
+                  monthlyPrice,
+                  annualPrice,
+                  currency: 'USD',
+                  requestLimitMonthly,
+                  requestsPerMinute,
+                  analyticsRetentionDays: 90,
+                  features: {
+                    basic_lookup: true,
+                    intelligence_lookup: true,
+                    trust_lookup: true,
+                    analytics: true,
+                  },
+                });
+              }}
+            >
+              {createPlan.isPending ? 'Creating plan...' : 'Create plan'}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {(allPlans.data ?? []).map((plan) => (
+              <div key={plan.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                <p className="font-medium">{plan.name} ({plan.slug})</p>
+                <p className="text-sm text-muted-foreground">
+                  {formatCurrency(Number(plan.monthlyPrice), plan.currency)} / month · status: {plan.status}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Subscriptions</h2>

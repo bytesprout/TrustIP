@@ -18,6 +18,7 @@ async function bootstrap(): Promise<void> {
   const configService = app.get(ConfigService);
   const isDevelopment = configService.isDevelopment;
   const port = configService.port;
+  const swaggerEnabled = process.env.SWAGGER_ENABLED !== 'false';
 
   // Security: HTTP security headers
   app.use(
@@ -75,7 +76,7 @@ async function bootstrap(): Promise<void> {
   app.useGlobalInterceptors(loggingInterceptor, responseInterceptor);
 
   // Swagger
-  if (isDevelopment || configService.appEnv !== 'production') {
+  if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('TrustIP API')
       .setDescription(
@@ -97,7 +98,7 @@ async function bootstrap(): Promise<void> {
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, document, {
+    SwaggerModule.setup('api/v1/docs', app, document, {
       swaggerOptions: {
         persistAuthorization: true,
         tagsSorter: 'alpha',

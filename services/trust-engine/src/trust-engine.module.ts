@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import Redis from 'ioredis';
 import { REDIS_CLIENT } from './constants/trust.constants';
 import { TrustService } from './services/trust.service';
 import { VpnDetectorService } from './services/vpn-detector.service';
@@ -14,6 +15,15 @@ import { ExplainabilityService } from './services/explainability.service';
 
 @Module({
   providers: [
+    {
+      provide: REDIS_CLIENT,
+      useFactory: (): Redis =>
+        new Redis({
+          host: process.env.REDIS_HOST ?? 'redis',
+          port: Number(process.env.REDIS_PORT ?? 6379),
+          password: process.env.REDIS_PASSWORD || undefined,
+        }),
+    },
     TrustService,
     VpnDetectorService,
     TorDetectorService,
@@ -26,7 +36,7 @@ import { ExplainabilityService } from './services/explainability.service';
     RuleEngineService,
     ExplainabilityService,
   ],
-  exports: [TrustService, REDIS_CLIENT],
+  exports: [REDIS_CLIENT, TrustService],
 })
 export class TrustEngineModule {}
 

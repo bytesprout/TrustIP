@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import Redis from 'ioredis';
 import { GeoService } from './services/geo.service';
 import { AsnService } from './services/asn.service';
 import { RdnsService } from './services/rdns.service';
@@ -10,8 +11,15 @@ import { GeoLookupService } from './services/geo-lookup.service';
 
 @Module({
   providers: [
-    // Redis client is expected to be provided by the importing module
-    // via: { provide: REDIS_CLIENT, useExisting: RedisService } or similar
+    {
+      provide: REDIS_CLIENT,
+      useFactory: (): Redis =>
+        new Redis({
+          host: process.env.REDIS_HOST ?? 'redis',
+          port: Number(process.env.REDIS_PORT ?? 6379),
+          password: process.env.REDIS_PASSWORD || undefined,
+        }),
+    },
     GeoService,
     AsnService,
     RdnsService,
@@ -22,6 +30,7 @@ import { GeoLookupService } from './services/geo-lookup.service';
     GeoLookupService,
   ],
   exports: [
+    REDIS_CLIENT,
     GeoLookupService,
     IpValidatorService,
     GeoService,
@@ -30,7 +39,6 @@ import { GeoLookupService } from './services/geo-lookup.service';
     IspClassifierService,
     ConfidenceService,
     GeoCacheService,
-    REDIS_CLIENT,
   ],
 })
 export class GeoEngineModule {}
