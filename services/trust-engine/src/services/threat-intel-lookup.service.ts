@@ -8,6 +8,7 @@ type CacheValue = { value: boolean; expiresAt: number };
 const CIDR_KEY_SUFFIX = ':cidr';
 const CIDR_SCAN_COUNT = 1000;
 const CIDR_CACHE_TTL_MS = 60_000;
+const MAX_CACHE_SIZE = 10_000;
 
 @Injectable()
 export class ThreatIntelLookupService {
@@ -22,7 +23,7 @@ export class ThreatIntelLookupService {
       return 0;
     });
     if (exact === 1) {
-      this.cache.set(`${redisKey}:${ip}`, { value: true, expiresAt: Date.now() + CIDR_CACHE_TTL_MS });
+      this.setCache(`${redisKey}:${ip}`, true);
       return true;
     }
 
@@ -33,7 +34,7 @@ export class ThreatIntelLookupService {
     }
 
     const cidrMatch = await this.isInCidrSet(`${redisKey}${CIDR_KEY_SUFFIX}`, ip);
-    this.cache.set(cacheKey, { value: cidrMatch, expiresAt: Date.now() + CIDR_CACHE_TTL_MS });
+    this.setCache(cacheKey, cidrMatch);
     return cidrMatch;
   }
 
@@ -56,5 +57,24 @@ export class ThreatIntelLookupService {
       this.logger.warn(`Threat-intel CIDR lookup failed (${cidrKey}, ${ip}): ${String(err)}`);
       return false;
     }
+  }
+
+  private setCache(key: string, value: boolean): void {
+    if (this.cache.size >= MAX_CACHE_SIZE) {
+      const now = Date.now();
+      for (const [cacheKey, cacheValue] of this.cache.entries()) {
+        if (cacheValue.expiresAt <= now) {
+          this.cache.delete(cacheKey);
+        }
+      }
+      if (this.cache.size >= MAX_CACHE_SIZE) {
+        const firstKey = this.cache.keys().next().value;
+        if (firstKey) {
+          this.cache.delete(firstKey);
+        }
+      }
+    }
+
+    this.cache.set(key, { value, expiresAt: Date.now() + CIDR_CACHE_TTL_MS });
   }
 }

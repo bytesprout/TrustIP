@@ -3,6 +3,7 @@ import type Redis from 'ioredis';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as net from 'net';
 import {
   DatasetType,
   DATASET_EVENTS,
@@ -69,7 +70,8 @@ export class HotReloadService {
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('#') && !l.startsWith(';'))
-      .map((l) => l.split(/\s+/)[0]?.trim() ?? l);
+      .map((l) => l.split(/\s+/)[0]?.trim() ?? l)
+      .filter((entry) => this.isValidIpOrCidr(entry));
 
     const exactIps = ips.filter((entry) => !entry.includes('/'));
     const cidrs = ips.filter((entry) => entry.includes('/'));
@@ -105,5 +107,22 @@ export class HotReloadService {
     } catch {
       return false;
     }
+  }
+
+  private isValidIpOrCidr(entry: string): boolean {
+    if (!entry.includes('/')) {
+      return net.isIP(entry) !== 0;
+    }
+
+    const [base, prefixRaw] = entry.split('/');
+    const prefix = Number(prefixRaw);
+    const version = net.isIP(base ?? '');
+    if (version === 4) {
+      return Number.isInteger(prefix) && prefix >= 0 && prefix <= 32;
+    }
+    if (version === 6) {
+      return Number.isInteger(prefix) && prefix >= 0 && prefix <= 128;
+    }
+    return false;
   }
 }

@@ -194,6 +194,7 @@ export class DownloaderService {
             return;
           }
           const redirectedUrl = new URL(location, url).toString();
+          this.validateUrl(redirectedUrl);
           this.downloadWithTimeout(redirectedUrl, destPath, options, redirectDepth + 1).then(resolve).catch(reject);
           return;
         }
