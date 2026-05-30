@@ -2,25 +2,25 @@ import { TorDetectorService } from './tor-detector.service';
 
 describe('TorDetectorService', () => {
   let service: TorDetectorService;
-  let mockRedis: { sismember: jest.Mock };
+  let threatIntelLookup: { isListed: jest.Mock };
 
   beforeEach(() => {
-    mockRedis = { sismember: jest.fn() };
-    service = new TorDetectorService(mockRedis as never);
+    threatIntelLookup = { isListed: jest.fn() };
+    service = new TorDetectorService(threatIntelLookup as never);
   });
 
   it('returns true when IP is a Tor exit node', async () => {
-    mockRedis.sismember.mockResolvedValue(1);
+    threatIntelLookup.isListed.mockResolvedValue(true);
     expect(await service.detect('1.2.3.4')).toBe(true);
   });
 
   it('returns false when IP is not a Tor exit node', async () => {
-    mockRedis.sismember.mockResolvedValue(0);
+    threatIntelLookup.isListed.mockResolvedValue(false);
     expect(await service.detect('1.2.3.4')).toBe(false);
   });
 
-  it('returns false on Redis error', async () => {
-    mockRedis.sismember.mockRejectedValue(new Error('redis error'));
+  it('returns false on lookup error', async () => {
+    threatIntelLookup.isListed.mockRejectedValue(new Error('lookup error'));
     expect(await service.detect('1.2.3.4')).toBe(false);
   });
 });

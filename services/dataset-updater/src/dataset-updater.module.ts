@@ -15,6 +15,7 @@ import { DatasetHealthService } from './services/dataset-health.service';
 import { DatasetUpdateProcessor } from './jobs/dataset-update.processor';
 import { PRISMA_CLIENT } from './services/registry.service';
 import { HOT_RELOAD_REDIS_CLIENT } from './services/hot-reload.service';
+import { DatasetBootstrapService } from './services/bootstrap.service';
 
 // Token exports for consuming modules to provide implementations
 export { PRISMA_CLIENT, DATASET_PRISMA_CLIENT } from './services/registry.service';
@@ -53,6 +54,7 @@ export { HOT_RELOAD_REDIS_CLIENT } from './services/hot-reload.service';
     UpdaterService,
     SchedulerService,
     DatasetHealthService,
+    DatasetBootstrapService,
     // Job processor
     DatasetUpdateProcessor,
   ],
@@ -64,6 +66,7 @@ export { HOT_RELOAD_REDIS_CLIENT } from './services/hot-reload.service';
     RegistryService,
     ValidatorService,
     ChecksumService,
+    DatasetBootstrapService,
   ],
 })
 export class DatasetUpdaterModule {}

@@ -15,13 +15,27 @@ import {
 import type { DownloadResult } from '../interfaces/dataset.interface';
 import { ChecksumService } from './checksum.service';
 
+interface DownloadRequestOptions {
+  headers?: Record<string, string>;
+}
+
+class DownloadError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+  }
+}
+
 @Injectable()
 export class DownloaderService {
   private readonly logger = new Logger(DownloaderService.name);
 
   constructor(private readonly checksumService: ChecksumService) {}
 
-  async download(url: string, destPath: string): Promise<DownloadResult> {
+  async download(url: string, destPath: string, options: DownloadRequestOptions = {}): Promise<DownloadResult> {
     this.validateUrl(url);
     await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
 
@@ -29,8 +43,8 @@ export class DownloaderService {
 
     for (let attempt = 1; attempt <= DOWNLOAD_MAX_RETRIES; attempt++) {
       try {
-        this.logger.debug(`Downloading ${url} (attempt ${attempt}/${DOWNLOAD_MAX_RETRIES})`);
-        await this.downloadWithTimeout(url, destPath);
+        this.logger.debug(`download_start ${JSON.stringify({ url, attempt, maxAttempts: DOWNLOAD_MAX_RETRIES })}`);
+        await this.downloadWithTimeout(url, destPath, options);
         const stats = await fs.promises.stat(destPath);
         const checksum = await this.checksumService.computeForFile(destPath);
         return {
@@ -41,9 +55,11 @@ export class DownloaderService {
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        this.logger.warn(`Download attempt ${attempt} failed: ${lastError.message}`);
+        await fs.promises.unlink(destPath).catch(() => undefined);
+        this.logger.warn(`download_attempt_failed ${JSON.stringify({ url, attempt, error: lastError.message })}`);
         if (attempt < DOWNLOAD_MAX_RETRIES) {
-          await this.sleep(DOWNLOAD_RETRY_DELAY_MS * attempt);
+          const retryAfterMs = err instanceof DownloadError ? err.retryAfterMs : undefined;
+          await this.sleep(this.computeRetryDelayMs(attempt, retryAfterMs));
         }
       }
     }
@@ -67,7 +83,9 @@ export class DownloaderService {
     for (let attempt = 1; attempt <= DOWNLOAD_MAX_RETRIES; attempt++) {
       try {
         this.logger.debug(`Downloading ${edition} (attempt ${attempt})`);
-        await this.downloadWithTimeout(url, tempTarGz);
+        await this.downloadWithTimeout(url, tempTarGz, {
+          headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+        });
 
         // Extract .mmdb from tar.gz
         const mmdbPath = await this.extractMmdb(tempTarGz, destDir, edition);
@@ -90,7 +108,8 @@ export class DownloaderService {
         // Cleanup partial download
         await fs.promises.unlink(tempTarGz).catch(() => undefined);
         if (attempt < DOWNLOAD_MAX_RETRIES) {
-          await this.sleep(DOWNLOAD_RETRY_DELAY_MS * attempt);
+          const retryAfterMs = err instanceof DownloadError ? err.retryAfterMs : undefined;
+          await this.sleep(this.computeRetryDelayMs(attempt, retryAfterMs));
         }
       }
     }
@@ -139,32 +158,52 @@ export class DownloaderService {
     return results;
   }
 
-  private async downloadWithTimeout(url: string, destPath: string): Promise<void> {
+  private async downloadWithTimeout(
+    url: string,
+    destPath: string,
+    options: DownloadRequestOptions,
+    redirectDepth = 0,
+  ): Promise<void> {
+    if (redirectDepth > 5) {
+      throw new DownloadError(`Too many redirects while downloading ${url}`, false);
+    }
+
     const client = url.startsWith('https://') ? https : http;
-    const writeStream = fs.createWriteStream(destPath);
 
     return new Promise<void>((resolve, reject) => {
+      const writeStream = fs.createWriteStream(destPath);
       const timer = setTimeout(() => {
         req.destroy(new Error(`Download timeout after ${DOWNLOAD_TIMEOUT_MS}ms`));
-        reject(new Error(`Download timeout: ${url}`));
+        reject(new DownloadError(`Download timeout: ${url}`, true));
       }, DOWNLOAD_TIMEOUT_MS);
 
-      const req = client.get(url, { timeout: DOWNLOAD_TIMEOUT_MS }, (res) => {
+      const req = client.get(url, {
+        timeout: DOWNLOAD_TIMEOUT_MS,
+        headers: {
+          'Accept-Encoding': 'gzip',
+          'User-Agent': 'TrustIP-DatasetUpdater/1.0',
+          ...options.headers,
+        },
+      }, (res) => {
         // Handle redirects
-        if (res.statusCode === 301 || res.statusCode === 302) {
+        if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
           clearTimeout(timer);
           const location = res.headers.location;
           if (!location) {
-            reject(new Error('Redirect without location header'));
+            reject(new DownloadError('Redirect without location header', false));
             return;
           }
-          this.downloadWithTimeout(location, destPath).then(resolve).catch(reject);
+          const redirectedUrl = new URL(location, url).toString();
+          this.downloadWithTimeout(redirectedUrl, destPath, options, redirectDepth + 1).then(resolve).catch(reject);
           return;
         }
 
         if (res.statusCode !== 200) {
           clearTimeout(timer);
-          reject(new Error(`HTTP ${res.statusCode ?? 'unknown'} for ${url}`));
+          const retryAfterHeader = res.headers['retry-after'];
+          const retryAfterMs = this.parseRetryAfter(retryAfterHeader);
+          const retryable = res.statusCode === 429 || res.statusCode === 408 || (res.statusCode >= 500 && res.statusCode <= 599);
+          reject(new DownloadError(`HTTP ${res.statusCode ?? 'unknown'} for ${url}`, retryable, retryAfterMs));
           return;
         }
 
@@ -179,13 +218,13 @@ export class DownloaderService {
           })
           .catch((err: unknown) => {
             clearTimeout(timer);
-            reject(err instanceof Error ? err : new Error(String(err)));
+            reject(err instanceof Error ? err : new DownloadError(String(err), true));
           });
       });
 
       req.on('error', (err) => {
         clearTimeout(timer);
-        reject(err);
+        reject(new DownloadError(err.message, true));
       });
     });
   }
@@ -215,5 +254,30 @@ export class DownloaderService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private computeRetryDelayMs(attempt: number, retryAfterMs?: number): number {
+    if (retryAfterMs && retryAfterMs > 0) {
+      return Math.min(retryAfterMs, 60_000);
+    }
+
+    const exponential = DOWNLOAD_RETRY_DELAY_MS * (2 ** (attempt - 1));
+    const jitter = Math.floor(Math.random() * 250);
+    return Math.min(exponential + jitter, 60_000);
+  }
+
+  private parseRetryAfter(retryAfterHeader: string | string[] | undefined): number | undefined {
+    if (!retryAfterHeader) return undefined;
+    const raw = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader;
+    if (!raw) return undefined;
+
+    const asSeconds = Number(raw);
+    if (Number.isFinite(asSeconds)) {
+      return Math.max(0, asSeconds * 1000);
+    }
+
+    const asDate = Date.parse(raw);
+    if (Number.isNaN(asDate)) return undefined;
+    return Math.max(0, asDate - Date.now());
   }
 }

@@ -10,5 +10,6 @@ export * from './services/history-risk.service';
 export * from './services/scoring.service';
 export * from './services/rule-engine.service';
 export * from './services/explainability.service';
+export * from './services/threat-intel-lookup.service';
 export * from './interfaces/trust.interface';
 export * from './constants/trust.constants';

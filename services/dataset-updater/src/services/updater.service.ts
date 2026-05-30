@@ -7,6 +7,7 @@ import {
   DATASET_PATHS,
   DATASET_FILENAMES,
   DATASET_SOURCES,
+  DATASET_SOURCE_PROVIDERS,
 } from '../constants/dataset.constants';
 import type { UpdateResult } from '../interfaces/dataset.interface';
 import { DownloaderService } from './downloader.service';
@@ -38,43 +39,36 @@ export class UpdaterService {
     await this.ensureDirectories(datasetType);
 
     // Initialize registry entry
-    await this.registry.getOrCreate(datasetType, datasetType, DATASET_SOURCES[datasetType]);
+    await this.registry.getOrCreate(datasetType, datasetType, this.resolvePrimarySourceUrl(datasetType));
     await this.registry.markUpdating(datasetType);
 
     let stagingPath: string | null = null;
 
     try {
-      // Step 1: Download
+      // Step 1: Download + validate with provider failover
       const filename = DATASET_FILENAMES[datasetType];
       if (!filename) throw new Error(`Unknown dataset type: ${datasetType}`);
 
       const stagingDir = DATASET_PATHS.staging();
       stagingPath = path.join(stagingDir, `${datasetType}-${version}-${filename}`);
 
-      this.logger.log(`[${datasetType}] Downloading...`);
-      const downloadResult = await this.downloadDataset(datasetType, stagingPath, version);
+      this.logger.log(`[${datasetType}] Downloading with provider fallback...`);
+      const { downloadResult, sourceUrl } = await this.downloadAndValidateDataset(datasetType, stagingPath, version);
 
-      // Step 2: Validate
-      this.logger.log(`[${datasetType}] Validating...`);
-      const validationResult = await this.validator.validate(datasetType, downloadResult.filePath);
-      if (!validationResult.valid) {
-        throw new Error(`Validation failed: ${validationResult.reason ?? 'unknown'}`);
-      }
-
-      // Step 3: Backup current
+      // Step 2: Backup current
       this.logger.log(`[${datasetType}] Backing up current...`);
       await this.rollback.backupCurrent(datasetType, version);
 
-      // Step 4: Atomic swap to current
+      // Step 3: Atomic swap to current
       const currentDir = DATASET_PATHS.current(datasetType);
       const currentPath = path.join(currentDir, filename);
       await this.rollback.atomicSwap(downloadResult.filePath, currentPath);
 
-      // Step 5: Hot reload (no downtime)
+      // Step 4: Hot reload (no downtime)
       this.logger.log(`[${datasetType}] Hot reloading...`);
       await this.hotReload.reload(datasetType);
 
-      // Step 6: Post-reload validation
+      // Step 5: Post-reload validation
       const postValidation = await this.validator.validate(datasetType, currentPath);
       if (!postValidation.valid) {
         // Rollback immediately
@@ -87,13 +81,14 @@ export class UpdaterService {
         throw new Error(`Post-reload validation failed: ${postValidation.reason ?? 'unknown'}`);
       }
 
-      // Step 7: Record success
+      // Step 6: Record success
       const durationMs = Date.now() - start;
       await this.registry.markSuccess(
         datasetType,
         version,
         downloadResult.checksum,
         BigInt(downloadResult.sizeBytes),
+        sourceUrl,
       );
       await this.registry.logUpdate(datasetType, version, DatasetStatus.ACTIVE, durationMs);
 
@@ -138,11 +133,11 @@ export class UpdaterService {
     }
   }
 
-  private async downloadDataset(
+  private async downloadAndValidateDataset(
     datasetType: string,
     stagingPath: string,
     _version: string,
-  ): Promise<{ filePath: string; checksum: string; sizeBytes: number }> {
+  ): Promise<{ downloadResult: { filePath: string; checksum: string; sizeBytes: number }; sourceUrl?: string }> {
     if (datasetType === DatasetType.GEOLITE_CITY || datasetType === DatasetType.GEOLITE_ASN) {
       const licenseKey = process.env['MAXMIND_LICENSE_KEY'];
       if (!licenseKey) {
@@ -158,15 +153,54 @@ export class UpdaterService {
       if (!edition) throw new Error(`Unknown GeoLite2 edition for ${datasetType}`);
 
       const tempDir = DATASET_PATHS.temp();
-      const result = await this.downloader.downloadAndExtractGeoLite(edition, licenseKey, tempDir);
-      return result;
+      const downloadResult = await this.downloader.downloadAndExtractGeoLite(edition, licenseKey, tempDir);
+      const validationResult = await this.validator.validate(datasetType, downloadResult.filePath);
+      if (!validationResult.valid) {
+        throw new Error(`Validation failed: ${validationResult.reason ?? 'unknown'}`);
+      }
+      return { downloadResult };
     }
 
-    const sourceUrl = DATASET_SOURCES[datasetType];
-    if (!sourceUrl) throw new Error(`No source URL for ${datasetType}`);
+    const providers = DATASET_SOURCE_PROVIDERS[datasetType]
+      ?? (DATASET_SOURCES[datasetType]
+        ? [{ name: `${datasetType}-default`, url: DATASET_SOURCES[datasetType] }]
+        : []);
 
-    const result = await this.downloader.download(sourceUrl, stagingPath);
-    return result;
+    if (providers.length === 0) {
+      throw new Error(`No source providers configured for ${datasetType}`);
+    }
+
+    const failures: string[] = [];
+
+    for (const provider of providers) {
+      try {
+        this.logger.log(`[${datasetType}] Trying provider: ${provider.name}`);
+        const downloadResult = await this.downloader.download(provider.url, stagingPath, {
+          headers: provider.headers,
+        });
+        const validationResult = await this.validator.validate(datasetType, downloadResult.filePath);
+        if (!validationResult.valid) {
+          throw new Error(`Validation failed: ${validationResult.reason ?? 'unknown'}`);
+        }
+        this.logger.log(`[${datasetType}] Provider succeeded: ${provider.name}`);
+        return { downloadResult, sourceUrl: provider.url };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        failures.push(`${provider.name}: ${message}`);
+        this.logger.warn(`[${datasetType}] Provider failed ${provider.name}: ${message}`);
+        await fs.promises.unlink(stagingPath).catch(() => undefined);
+      }
+    }
+
+    throw new Error(`All providers failed for ${datasetType}. ${failures.join(' | ')}`);
+  }
+
+  private resolvePrimarySourceUrl(datasetType: string): string | undefined {
+    const providers = DATASET_SOURCE_PROVIDERS[datasetType];
+    if (providers && providers.length > 0) {
+      return providers[0].url;
+    }
+    return DATASET_SOURCES[datasetType];
   }
 
   private async attemptRollback(datasetType: string): Promise<void> {

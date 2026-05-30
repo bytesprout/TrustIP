@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { GeoLookupService, IpValidatorService } from '@trustip/geo-engine';
-import { TrustService } from '@trustip/trust-engine';
+import { ThreatIntelLookupService, TrustService } from '@trustip/trust-engine';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { RedisService } from '../../../redis/redis.service';
 import { AnalyticsService } from './analytics.service';
 import { ResponseBuilderService } from './response-builder.service';
 import { ObservabilityMetricsService } from '../../observability/observability-metrics.service';
@@ -28,7 +27,7 @@ export class IpService {
     private readonly geoLookupService: GeoLookupService,
     private readonly ipValidator: IpValidatorService,
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
+    private readonly threatIntelLookup: ThreatIntelLookupService,
     private readonly analytics: AnalyticsService,
     private readonly responseBuilder: ResponseBuilderService,
     private readonly trustService: TrustService,
@@ -187,17 +186,16 @@ export class IpService {
   /** Check Redis threat intel sets for Tor / FireHOL / VPN membership */
   private async checkPrivacy(ip: string): Promise<{ vpn: boolean; proxy: boolean; tor: boolean }> {
     try {
-      const client = this.redis.getClient();
       const [tor, firehol, vpn] = await Promise.all([
-        client.sismember(REDIS_KEY_TOR, ip),
-        client.sismember(REDIS_KEY_FIREHOL, ip),
-        client.sismember(REDIS_KEY_VPN, ip),
+        this.threatIntelLookup.isListed(REDIS_KEY_TOR, ip),
+        this.threatIntelLookup.isListed(REDIS_KEY_FIREHOL, ip),
+        this.threatIntelLookup.isListed(REDIS_KEY_VPN, ip),
       ]);
 
       return {
-        tor: tor === 1,
-        proxy: firehol === 1,  // FireHOL = known bad IPs / proxy blocklist
-        vpn: vpn === 1,
+        tor,
+        proxy: firehol,  // FireHOL = known bad IPs / proxy blocklist
+        vpn,
       };
     } catch (err) {
       this.logger.warn(`Privacy check failed for ${ip}: ${String(err)}`);

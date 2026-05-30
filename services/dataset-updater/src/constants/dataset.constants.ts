@@ -41,9 +41,50 @@ export const DATASET_SOURCES: Record<string, string> = {
   // GeoLite2 requires MaxMind license key — dynamic URL built at runtime
 };
 
+export interface DatasetSourceProvider {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export const DATASET_SOURCE_PROVIDERS: Record<string, DatasetSourceProvider[]> = {
+  [DatasetType.TOR]: [
+    {
+      name: 'torproject',
+      url: 'https://check.torproject.org/torbulkexitlist',
+      headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+    },
+    {
+      name: 'dan-me-uk-tor',
+      url: 'https://www.dan.me.uk/torlist/',
+      headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+    },
+  ],
+  [DatasetType.FIREHOL]: [
+    {
+      name: 'firehol-primary',
+      url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset',
+      headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+    },
+  ],
+  [DatasetType.VPN]: [
+    {
+      name: 'x4bnet-ipv4',
+      url: 'https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt',
+      headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+    },
+    {
+      name: 'x4bnet-openvpn',
+      url: 'https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/openvpn.txt',
+      headers: { 'User-Agent': 'TrustIP-DatasetUpdater/1.0' },
+    },
+  ],
+};
+
 // Domains that are allowlisted for dataset downloads (security)
 export const ALLOWED_DOWNLOAD_DOMAINS = [
   'check.torproject.org',
+  'www.dan.me.uk',
   'raw.githubusercontent.com',
   'download.maxmind.com',
 ];

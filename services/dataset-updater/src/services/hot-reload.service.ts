@@ -69,7 +69,10 @@ export class HotReloadService {
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('#') && !l.startsWith(';'))
-      .map((l) => l.split('/')[0]?.trim() ?? l); // normalize CIDR to base IP
+      .map((l) => l.split(/\s+/)[0]?.trim() ?? l);
+
+    const exactIps = ips.filter((entry) => !entry.includes('/'));
+    const cidrs = ips.filter((entry) => entry.includes('/'));
 
     if (ips.length === 0) {
       this.logger.warn(`No IPs to load into Redis for ${datasetType}`);
@@ -80,15 +83,20 @@ export class HotReloadService {
     const BATCH_SIZE = 5000;
     const pipeline = this.redis.pipeline();
     pipeline.del(redisKey);
+    pipeline.del(`${redisKey}:cidr`);
 
-    for (let i = 0; i < ips.length; i += BATCH_SIZE) {
-      const batch = ips.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < exactIps.length; i += BATCH_SIZE) {
+      const batch = exactIps.slice(i, i + BATCH_SIZE);
       pipeline.sadd(redisKey, ...batch);
+    }
+    for (let i = 0; i < cidrs.length; i += BATCH_SIZE) {
+      const batch = cidrs.slice(i, i + BATCH_SIZE);
+      pipeline.sadd(`${redisKey}:cidr`, ...batch);
     }
 
     await pipeline.exec();
 
-    this.logger.log(`Loaded ${ips.length} IPs into Redis set ${redisKey}`);
+    this.logger.log(`Loaded ${exactIps.length} exact IPs and ${cidrs.length} CIDRs into Redis set ${redisKey}`);
   }
 
   async isIpInSet(redisKey: string, ip: string): Promise<boolean> {

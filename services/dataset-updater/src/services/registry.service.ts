@@ -43,6 +43,7 @@ export class RegistryService {
     version: string,
     checksum: string,
     size: bigint,
+    sourceUrl?: string,
   ): Promise<void> {
     await this.prisma.datasetRegistry.update({
       where: { datasetName },
@@ -51,6 +52,7 @@ export class RegistryService {
         version,
         checksum,
         size,
+        ...(sourceUrl ? { sourceUrl } : {}),
         lastUpdatedAt: new Date(),
         failureReason: null,
       },

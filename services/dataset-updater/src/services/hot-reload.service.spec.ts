@@ -82,6 +82,7 @@ describe('HotReloadService', () => {
 
     expect(mockRedis.pipeline).toHaveBeenCalled();
     expect(mockPipeline.del).toHaveBeenCalledWith(DATASET_REDIS_KEYS.torIps);
+    expect(mockPipeline.del).toHaveBeenCalledWith(`${DATASET_REDIS_KEYS.torIps}:cidr`);
     expect(mockPipeline.sadd).toHaveBeenCalled();
     expect(mockPipeline.exec).toHaveBeenCalled();
     expect(handler).toHaveBeenCalled();
@@ -90,6 +91,20 @@ describe('HotReloadService', () => {
   it('should handle missing tor file gracefully', async () => {
     // No file created, should not throw
     await expect(service.reload('tor')).resolves.not.toThrow();
+  });
+
+  it('stores CIDR entries in dedicated CIDR Redis set', async () => {
+    const torDir = path.join(tmpBase, 'current', 'tor');
+    await fs.promises.mkdir(torDir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(torDir, 'tor-exit-nodes.txt'),
+      '1.2.3.0/24\n9.9.9.9',
+    );
+
+    await service.reload('tor');
+
+    expect(mockPipeline.sadd).toHaveBeenCalledWith(`${DATASET_REDIS_KEYS.torIps}:cidr`, '1.2.3.0/24');
+    expect(mockPipeline.sadd).toHaveBeenCalledWith(DATASET_REDIS_KEYS.torIps, '9.9.9.9');
   });
 
   it('should check IP membership in Redis set', async () => {

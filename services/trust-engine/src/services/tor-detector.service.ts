@@ -1,15 +1,14 @@
-import { Injectable, Inject } from '@nestjs/common';
-import type { Redis } from 'ioredis';
-import { REDIS_CLIENT, REDIS_KEY_TOR } from '../constants/trust.constants';
+import { Injectable } from '@nestjs/common';
+import { REDIS_KEY_TOR } from '../constants/trust.constants';
+import { ThreatIntelLookupService } from './threat-intel-lookup.service';
 
 @Injectable()
 export class TorDetectorService {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(private readonly threatIntelLookup: ThreatIntelLookupService) {}
 
   async detect(ip: string): Promise<boolean> {
     try {
-      const result = await this.redis.sismember(REDIS_KEY_TOR, ip);
-      return result === 1;
+      return await this.threatIntelLookup.isListed(REDIS_KEY_TOR, ip);
     } catch {
       return false;
     }

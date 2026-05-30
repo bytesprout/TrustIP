@@ -12,6 +12,7 @@ import { HistoryRiskService } from './services/history-risk.service';
 import { ScoringService } from './services/scoring.service';
 import { RuleEngineService } from './services/rule-engine.service';
 import { ExplainabilityService } from './services/explainability.service';
+import { ThreatIntelLookupService } from './services/threat-intel-lookup.service';
 
 @Module({
   providers: [
@@ -35,8 +36,9 @@ import { ExplainabilityService } from './services/explainability.service';
     ScoringService,
     RuleEngineService,
     ExplainabilityService,
+    ThreatIntelLookupService,
   ],
-  exports: [REDIS_CLIENT, TrustService],
+  exports: [REDIS_CLIENT, TrustService, ThreatIntelLookupService],
 })
 export class TrustEngineModule {}
 

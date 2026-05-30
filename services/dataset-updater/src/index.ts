@@ -8,6 +8,7 @@ export * from './services/hot-reload.service';
 export * from './services/updater.service';
 export * from './services/scheduler.service';
 export * from './services/dataset-health.service';
+export * from './services/bootstrap.service';
 export * from './jobs/dataset-update.processor';
 export * from './interfaces/dataset.interface';
 export * from './constants/dataset.constants';
