@@ -200,10 +200,11 @@ export class DownloaderService {
 
         if (res.statusCode !== 200) {
           clearTimeout(timer);
+          const statusCode = res.statusCode ?? 0;
           const retryAfterHeader = res.headers['retry-after'];
           const retryAfterMs = this.parseRetryAfter(retryAfterHeader);
-          const retryable = res.statusCode === 429 || res.statusCode === 408 || (res.statusCode >= 500 && res.statusCode <= 599);
-          reject(new DownloadError(`HTTP ${res.statusCode ?? 'unknown'} for ${url}`, retryable, retryAfterMs));
+          const retryable = statusCode === 429 || statusCode === 408 || (statusCode >= 500 && statusCode <= 599);
+          reject(new DownloadError(`HTTP ${statusCode || 'unknown'} for ${url}`, retryable, retryAfterMs));
           return;
         }
 
