@@ -68,7 +68,7 @@ export class HotReloadService {
     const content = await fs.promises.readFile(filePath, 'utf-8');
     const ips = content
       .split('\n')
-      .map((l) => l.trim())
+      .map((l) => l.split(/[#;]/)[0]?.trim() ?? '')
       .filter((l) => l && !l.startsWith('#') && !l.startsWith(';'))
       .map((l) => l.split(/\s+/)[0]?.trim() ?? l)
       .filter((entry) => this.isValidIpOrCidr(entry));

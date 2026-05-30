@@ -17,6 +17,8 @@ import { RollbackService } from './rollback.service';
 import { RegistryService } from './registry.service';
 import { HotReloadService } from './hot-reload.service';
 
+const LEGACY_SOURCE_PROVIDER_NAME = 'legacy-source';
+
 @Injectable()
 export class UpdaterService {
   private readonly logger = new Logger(UpdaterService.name);
@@ -163,7 +165,7 @@ export class UpdaterService {
 
     const providers = DATASET_SOURCE_PROVIDERS[datasetType]
       ?? (DATASET_SOURCES[datasetType]
-        ? [{ name: `${datasetType}-default`, url: DATASET_SOURCES[datasetType] }]
+        ? [{ name: LEGACY_SOURCE_PROVIDER_NAME, url: DATASET_SOURCES[datasetType] }]
         : []);
 
     if (providers.length === 0) {

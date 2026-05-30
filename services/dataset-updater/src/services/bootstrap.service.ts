@@ -1,9 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { DatasetType } from '../constants/dataset.constants';
+import { DatasetStatus, DatasetType } from '../constants/dataset.constants';
 import { HotReloadService } from './hot-reload.service';
 import { RegistryService } from './registry.service';
 import { SchedulerService } from './scheduler.service';
 import { ValidatorService } from './validator.service';
+
+const THREAT_INTEL_DATASETS = [DatasetType.TOR, DatasetType.FIREHOL, DatasetType.VPN] as const;
+const BOOTSTRAP_DATASETS = [
+  DatasetType.GEOLITE_CITY,
+  DatasetType.GEOLITE_ASN,
+  ...THREAT_INTEL_DATASETS,
+] as const;
 
 @Injectable()
 export class DatasetBootstrapService implements OnModuleInit {
@@ -22,7 +29,7 @@ export class DatasetBootstrapService implements OnModuleInit {
   }
 
   private async preloadThreatIntelSets(): Promise<void> {
-    for (const datasetType of [DatasetType.TOR, DatasetType.FIREHOL, DatasetType.VPN]) {
+    for (const datasetType of THREAT_INTEL_DATASETS) {
       if (!this.validator.fileExists(datasetType)) {
         this.logger.warn(`bootstrap_preload_skipped ${JSON.stringify({ datasetType, reason: 'file_missing' })}`);
         continue;
@@ -38,18 +45,10 @@ export class DatasetBootstrapService implements OnModuleInit {
   }
 
   private async ensureInitialUpdates(): Promise<void> {
-    const datasetTypes = [
-      DatasetType.GEOLITE_CITY,
-      DatasetType.GEOLITE_ASN,
-      DatasetType.TOR,
-      DatasetType.FIREHOL,
-      DatasetType.VPN,
-    ];
-
-    for (const datasetType of datasetTypes) {
+    for (const datasetType of BOOTSTRAP_DATASETS) {
       const entry = await this.registry.getOne(datasetType).catch(() => null);
       const hasLocalFile = this.validator.fileExists(datasetType);
-      const needsUpdate = !entry || !entry.lastUpdatedAt || entry.status === 'FAILED' || !hasLocalFile;
+      const needsUpdate = !entry || !entry.lastUpdatedAt || entry.status === DatasetStatus.FAILED || !hasLocalFile;
 
       if (!needsUpdate) {
         continue;

@@ -68,9 +68,10 @@ export class ThreatIntelLookupService {
         }
       }
       if (this.cache.size >= MAX_CACHE_SIZE) {
-        const firstKey = this.cache.keys().next().value;
-        if (firstKey) {
-          this.cache.delete(firstKey);
+        const targetSize = Math.floor(MAX_CACHE_SIZE * 0.9);
+        for (const cacheKey of this.cache.keys()) {
+          if (this.cache.size <= targetSize) break;
+          this.cache.delete(cacheKey);
         }
       }
     }

@@ -29,6 +29,9 @@ class DownloadError extends Error {
   }
 }
 
+const MAX_REDIRECT_DEPTH = 5;
+const RETRY_JITTER_MS = 250;
+
 @Injectable()
 export class DownloaderService {
   private readonly logger = new Logger(DownloaderService.name);
@@ -164,7 +167,7 @@ export class DownloaderService {
     options: DownloadRequestOptions,
     redirectDepth = 0,
   ): Promise<void> {
-    if (redirectDepth > 5) {
+    if (redirectDepth > MAX_REDIRECT_DEPTH) {
       throw new DownloadError(`Too many redirects while downloading ${url}`, false);
     }
 
@@ -263,8 +266,9 @@ export class DownloaderService {
       return Math.min(retryAfterMs, 60_000);
     }
 
-    const exponential = DOWNLOAD_RETRY_DELAY_MS * (2 ** (attempt - 1));
-    const jitter = Math.floor(Math.random() * 250);
+    const boundedExponent = Math.min(Math.max(0, attempt - 1), 10);
+    const exponential = DOWNLOAD_RETRY_DELAY_MS * (2 ** boundedExponent);
+    const jitter = Math.floor(Math.random() * RETRY_JITTER_MS);
     return Math.min(exponential + jitter, 60_000);
   }
 
